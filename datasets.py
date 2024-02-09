@@ -19,7 +19,7 @@ class CelebAMaskHQDataset(Dataset):
         self.image_dir = os.path.join(root_dir, "CelebA-HQ-img")
         self.mask_dir = os.path.join(root_dir, "CelebAMask-HQ-mask-anno")
         self.replay = replay
-        
+        # jj
         # Load image list
         self.image_list = sorted([f for f in os.listdir(self.image_dir) if f.endswith('.jpg')])
         self.original_length = len(self.image_list)
