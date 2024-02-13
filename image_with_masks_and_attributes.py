@@ -61,6 +61,6 @@ class ImageOfPerson(ImageWithMasksAndAttributes):
         earrings = (True, self.attributes['Wearing_Earrings']) if self.attributes['Wearing_Earrings'] > self.categories_and_attributes.thresholds_pred['Wearing_Earrings'] else (False, self.attributes['Wearing_Earrings'])
         necklace = (True, self.attributes['Wearing_Necklace']) if self.attributes['Wearing_Necklace'] > self.categories_and_attributes.thresholds_pred['Wearing_Necklace'] else (False, self.attributes['Wearing_Necklace'])
         necktie = (True, self.attributes['Wearing_Necktie']) if self.attributes['Wearing_Necktie'] > self.categories_and_attributes.thresholds_pred['Wearing_Necktie'] else (False, self.attributes['Wearing_Necktie'])
-        describe_hair = 0
+        describe_hair = self.attributes['Bald'] <= self.categories_and_attributes.thresholds_pred['Bald']
 
         description = ""
