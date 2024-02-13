@@ -1,14 +1,10 @@
-import os
-import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import random
-import torch.nn.functional as F
 
 from models import *
-from datasets import *
 from datasets import *
 from utils import *
 

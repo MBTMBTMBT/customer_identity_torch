@@ -7,8 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import re
 import enum
-from image import ImageWithMasksAndAttributes
-from categories_and_attributes import CelebAMaskHQCategoriesAndAttributes
+from image_with_masks_and_attributes import ImageWithMasksAndAttributes
+from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCategoriesAndAttributes
 
 
 # class CategoryType(enum.Enum):
@@ -18,7 +18,7 @@ from categories_and_attributes import CelebAMaskHQCategoriesAndAttributes
 
 class CelebAMaskHQDataset(Dataset):
     replay_attributes = ['Wearing_Hat', 'Eyeglasses', ]
-    def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes=None):
+    def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes:CategoriesAndAttributes=None):
         self.categories_and_attributes = CelebAMaskHQCategoriesAndAttributes() if categories_and_attributes is None else categories_and_attributes
         self.output_size = output_size
         self.root_dir = root_dir
