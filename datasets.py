@@ -95,7 +95,7 @@ class CelebAMaskHQDataset(Dataset):
             else:
                 attributes.append(0.0)
         for attribute in self.categories_and_attributes.mask_labels:
-            mask = masks[list(self.categories_and_attributes.merged_categories.keys()).index(attribute)]
+            mask = masks[sorted(list(self.categories_and_attributes.merged_categories.keys())).index(attribute)]
             label = transforms.ToTensor()(mask).any(dim=-1).any(dim=-1).float()
             attributes.append(label)
 
@@ -158,7 +158,7 @@ class MergedCelebAMaskHQDataset(CelebAMaskHQDataset):  # 'brow', 'eye', 'mouth',
 
         masks = []
 
-        for category in self.categories_and_attributes.merged_categories.keys():
+        for category in sorted(list(self.categories_and_attributes.merged_categories.keys())):
             combined_mask_np = np.zeros_like(np.array(unmerged_masks[0]))  # Initialize with zeros
             for sub_category in self.categories_and_attributes.merged_categories[category]:
                 sub_cat_idx = self.categories_and_attributes.mask_categories.index(sub_category)
@@ -180,7 +180,7 @@ class MergedCelebAMaskHQDataset(CelebAMaskHQDataset):  # 'brow', 'eye', 'mouth',
         image_tensor, masks_tensor, attributes_tensor = self.__getitem__(idx)
         image_np, masks_np, attributes_np = np.array(image_tensor), np.array(masks_tensor), np.array(attributes_tensor)
         masks = {}
-        for i, category in enumerate(self.categories_and_attributes.merged_categories.keys()):
+        for i, category in enumerate(sorted(list(self.categories_and_attributes.merged_categories.keys()))):
             masks[category] = masks_np[i]
         attributes = {}
         c = 0
@@ -538,7 +538,7 @@ if __name__ == "__main__":
 
         # Show some masks
         # Change these indices to see different masks
-        show_masks(masks, list(celebAMaskHQCategoriesAndAttributes.merged_categories.keys()), range(len(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())))
+        show_masks(masks, sorted(list(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())), range(len(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())))
 
         plt.show()
 

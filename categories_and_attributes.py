@@ -20,7 +20,7 @@ class CelebAMaskHQCategoriesAndAttributes(CategoriesAndAttributes):
         'mouth': ['l_lip', 'u_lip', 'mouth',],
     }
     _categories_to_merge = []
-    for key in merged_categories.keys():
+    for key in sorted(list(merged_categories.keys())):
         for cat in merged_categories[key]:
             _categories_to_merge.append(cat)
     for key in mask_categories:
@@ -49,7 +49,7 @@ class CelebAMaskHQCategoriesAndAttributes(CategoriesAndAttributes):
     thresholds_pred: dict[str, float] = {}
 
     # set default thresholds:
-    for key in merged_categories.keys():
+    for key in sorted(merged_categories.keys()):
         thresholds_mask[key] = 0.5
     for key in attributes + mask_labels:
         thresholds_pred[key] = 0.5

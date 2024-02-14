@@ -259,7 +259,7 @@ if __name__ == "__main__":
     # val_dataset = ConcatDataset([val_dataset, lip_val_dataset])
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=16)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=24)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=16)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=16)
 

@@ -31,7 +31,7 @@ class ImageWithMasksAndAttributes:
             self.plane_attribute_dict[attribute] = self.attributes[attribute]
 
         self.selective_attribute_dict: dict[str, dict[str, float]] = {}
-        for category in self.categories_and_attributes.selective_categories.keys():
+        for category in sorted(list(self.categories_and_attributes.selective_categories.keys())):
             self.selective_attribute_dict[category] = {}
             temp_list: list[float] = []
             for attribute in self.categories_and_attributes.selective_categories[category]:
