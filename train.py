@@ -259,7 +259,7 @@ if __name__ == "__main__":
     # val_dataset = ConcatDataset([val_dataset, lip_val_dataset])
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=16)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=16)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=16)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=16)
 
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     # segment_model = DeepLabV3PlusMobileNetV3(num_classes=4)  # ['hair', 'hat', 'eye_g', 'skin', ] 'brow', 'eye', 'mouth', 'nose', ]
     segment_model = UNetWithResnet18Encoder(num_classes=cat_layers)
     # predict_model = MultiLabelMobileNetV3Large(4, 7)   # 'hair', 'hat', 'glasses', 'face', ; first three with colours, rgb
-    predictions = len(CelebAMaskHQCategoriesAndAttributes.attributes) - len(CelebAMaskHQCategoriesAndAttributes.avoided_attributes)
+    predictions = len(CelebAMaskHQCategoriesAndAttributes.attributes) - len(CelebAMaskHQCategoriesAndAttributes.avoided_attributes) + len(CelebAMaskHQCategoriesAndAttributes.mask_labels)
     predict_model = MultiLabelResNet(num_labels=predictions, input_channels=cat_layers+3)
     model = CombinedModelNoRegression(segment_model, predict_model, cat_layers=cat_layers)
 
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-12/freeze-half-16')
+    writer = SummaryWriter('runs/24-2-14/freeze-half-32')
 
     # early stopping params
     early_stopping_patience = 5
@@ -306,10 +306,10 @@ if __name__ == "__main__":
         best_val_loss = float('inf')
 
     # train loop
-    num_epochs = 50
+    num_epochs = 60
     mode = 1
     for epoch in range(start_epoch, num_epochs):
-        if epoch >= 20:
+        if epoch >= 30:
             mode = 0
         print(f'Epoch {epoch+1}/{num_epochs}, mode={mode}')
         print('-' * 10)

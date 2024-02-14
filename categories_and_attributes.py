@@ -1,6 +1,7 @@
 class CategoriesAndAttributes:
     mask_categories: list[str] = []
     merged_categories: dict[str, list[str]] = {}
+    mask_labels: list[str] = []
     selective_categories: dict[str, list[str]] = {}
     plane_attributes: list[str] = []
     avoided_attributes: list[str] = []
@@ -25,6 +26,7 @@ class CelebAMaskHQCategoriesAndAttributes(CategoriesAndAttributes):
     for key in mask_categories:
         if key not in _categories_to_merge:
             merged_categories[key] = [key]
+    mask_labels = ['hair']
     selective_attributes = {
         'facial_hair': ['5_o_Clock_Shadow', 'Goatee', 'Mustache', 'No_Beard', 'Sideburns', ],
         'hair_colour': ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Gray_Hair', ],
@@ -49,8 +51,8 @@ class CelebAMaskHQCategoriesAndAttributes(CategoriesAndAttributes):
     # set default thresholds:
     for key in merged_categories.keys():
         thresholds_mask[key] = 0.5
-    for key in attributes:
-        thresholds_pred = 0.5
+    for key in attributes + mask_labels:
+        thresholds_pred[key] = 0.5
 
     # set specific thresholds:
     thresholds_mask['eye_g'] = 0.25

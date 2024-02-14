@@ -91,9 +91,13 @@ class CelebAMaskHQDataset(Dataset):
             if attribute in self.categories_and_attributes.avoided_attributes:
                 continue
             if self.has_attribute(self.image_list[idx], attribute):
-                attributes.append(1)
+                attributes.append(1.0)
             else:
-                attributes.append(0)
+                attributes.append(0.0)
+        for attribute in self.categories_and_attributes.mask_labels:
+            mask = masks[list(self.categories_and_attributes.merged_categories.keys()).index(attribute)]
+            label = transforms.ToTensor()(mask).any(dim=-1).any(dim=-1).float()
+            attributes.append(label)
 
         # Convert back to Tensor
         image = transforms.ToTensor()(image)

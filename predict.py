@@ -41,5 +41,7 @@ class Predictor:
         for attribute in self.categories_and_attributes.attributes:
             if attribute not in self.categories_and_attributes.avoided_attributes:
                 attribute_dict[attribute] = class_list_iter.__next__()
+        for attribute in self.categories_and_attributes.mask_labels:
+            attribute_dict[attribute] = class_list_iter.__next__()
         image_obj = ImageWithMasksAndAttributes(rgb_image, mask_dict, attribute_dict, self.categories_and_attributes)
         return image_obj
