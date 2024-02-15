@@ -259,7 +259,7 @@ if __name__ == "__main__":
     # val_dataset = ConcatDataset([val_dataset, lip_val_dataset])
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=24)
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=16)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=16)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=16)
 
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-15/freeze-half-32')
+    writer = SummaryWriter('runs/24-2-15/freeze-half-16')
 
     # early stopping params
     early_stopping_patience = 5
