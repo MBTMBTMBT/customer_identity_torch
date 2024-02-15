@@ -284,7 +284,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-14/freeze-half-32')
+    writer = SummaryWriter('runs/24-2-15/freeze-half-32')
 
     # early stopping params
     early_stopping_patience = 5
