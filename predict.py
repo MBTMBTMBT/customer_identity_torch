@@ -12,7 +12,7 @@ from image_with_masks_and_attributes import ImageWithMasksAndAttributes
 def read_images(path: str) -> tuple[list[np.ndarray], list[str]]:
     images_list = []
     path_list = []
-    for filename in os.listdir(path):
+    for filename in sorted(list(os.listdir(path))):
         if filename.endswith(("jpg", "jpeg")):
             with Image.open(os.path.join(path, filename)) as img:
                 rgb_image = np.array(img.convert('RGB'))
@@ -36,6 +36,7 @@ class Predictor:
                 self._thresholds_pred.append(self.categories_and_attributes.thresholds_pred[attribute])
 
     def predict(self, rgb_image: np.ndarray) -> ImageWithMasksAndAttributes:
+        mean_val = np.mean(rgb_image)
         image_tensor = torch.from_numpy(rgb_image).permute(2, 0, 1).unsqueeze(0).float() / 255.0
         pred_masks, pred_classes = self.model(image_tensor)
         # Apply binary erosion and dilation to the masks
@@ -47,6 +48,9 @@ class Predictor:
         mask_list = [pred_masks[i, :, :] for i in range(pred_masks.shape[0])]
         pred_classes = pred_classes.detach().squeeze(0).numpy()
         class_list = [pred_classes[i].item() for i in range(pred_classes.shape[0])]
+        # print(rgb_image)
+        print(mean_val)
+        print(pred_classes)
         mask_dict = {}
         for i, mask in enumerate(mask_list):
             mask_dict[self.categories_and_attributes.mask_categories[i]] = mask
@@ -70,12 +74,20 @@ if __name__ == '__main__':
         CelebAMaskHQCategoriesAndAttributes.avoided_attributes) + len(CelebAMaskHQCategoriesAndAttributes.mask_labels)
     predict_model = MultiLabelResNet(num_labels=predictions, input_channels=cat_layers + 3)
     model = CombinedModelNoRegression(segment_model, predict_model, cat_layers=cat_layers)
+    latest_checkpoint = find_latest_checkpoint('saved-models')
+    if latest_checkpoint:
+        print(f"Loading model from {latest_checkpoint}")
+        model, _, start_epoch, best_val_loss = load_model(model, None, path=latest_checkpoint, cpu_only=True)
+        start_epoch += 1
+    else:
+        raise RuntimeError("No save model discovered under %s" % 'latest_checkpoint')
     model.eval()
     test_path = './test_images'
     p = Predictor(model, device, categories_and_attributes)
     images_list, path_list = read_images(test_path)
     for img, path in zip(images_list, path_list):
         rst = p.predict(img)
-        print()
+        # print()
         print(path)
         print(rst.attributes)
+        print()

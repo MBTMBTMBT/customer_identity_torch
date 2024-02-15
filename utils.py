@@ -227,7 +227,7 @@ def load_model(model, optimizer, path="model.pth", cpu_only=False):
 
 def find_latest_checkpoint(model_dir):
     """Find the latest model checkpoint in the given directory."""
-    checkpoints = [f for f in os.listdir(model_dir) if f.startswith('best_model_epoch_') and f.endswith('.pth')]
+    checkpoints = [f for f in os.listdir(model_dir) if f.startswith('model_epoch_') and f.endswith('.pth')]
     if not checkpoints:
         return None
     
