@@ -65,7 +65,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch,
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
         # Select a uniform scale for the entire batch
-        scale_factor = random.uniform(0.5, 1)
+        scale_factor = random.uniform(0.35, 1)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels, scale_factor)
 
         optimizer.zero_grad()
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     seed = 0  # random.randint(0, 1024)
     torch.manual_seed(seed)
 
-    image_size = (192, 192)
+    image_size = (256, 256)
     # datasets
     full_dataset = MergedCelebAMaskHQDataset(root_dir=r"/home/bentengma/work_space/CelebAMask-HQ", output_size=image_size)
     train_size = int(0.9 * len(full_dataset))
