@@ -2,7 +2,7 @@ class CategoriesAndAttributes:
     mask_categories: list[str] = []
     merged_categories: dict[str, list[str]] = {}
     mask_labels: list[str] = []
-    selective_categories: dict[str, list[str]] = {}
+    selective_attributes: dict[str, list[str]] = {}
     plane_attributes: list[str] = []
     avoided_attributes: list[str] = []
     attributes: list[str] = []
@@ -57,3 +57,6 @@ class CelebAMaskHQCategoriesAndAttributes(CategoriesAndAttributes):
     # set specific thresholds:
     thresholds_mask['eye_g'] = 0.25
     thresholds_pred['Eyeglasses'] = 0.25
+    thresholds_pred['Wearing_Earrings'] = 0.4
+    thresholds_pred['Wearing_Necklace'] = 0.2
+    thresholds_pred['Wearing_Necktie'] = 0.2

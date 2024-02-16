@@ -6,15 +6,24 @@ from models import *
 from datasets import *
 from utils import *
 
-from image_with_masks_and_attributes import ImageWithMasksAndAttributes
+from image_with_masks_and_attributes import ImageWithMasksAndAttributes, ImageOfPerson
 
 
-def read_images(path: str) -> tuple[list[np.ndarray], list[str]]:
+def read_images(path: str, size: int) -> tuple[list[np.ndarray], list[str]]:
     images_list = []
     path_list = []
+
     for filename in sorted(list(os.listdir(path))):
         if filename.endswith(("jpg", "jpeg")):
             with Image.open(os.path.join(path, filename)) as img:
+                w, h = img.size
+                new_h, new_w = size, size
+                if h > w:
+                    new_h = int(size * h / w)
+                else:
+                    new_w = int(size * w / h)
+
+                img = img.resize((new_w, new_h))
                 rgb_image = np.array(img.convert('RGB'))
                 images_list.append(rgb_image)
                 path_list.append(os.path.join(path, filename))
@@ -84,10 +93,11 @@ if __name__ == '__main__':
     model.eval()
     test_path = './test_images'
     p = Predictor(model, device, categories_and_attributes)
-    images_list, path_list = read_images(test_path)
+    images_list, path_list = read_images(test_path, size=256)
     for img, path in zip(images_list, path_list):
-        rst = p.predict(img)
+        rst = ImageOfPerson.from_parent_instance(p.predict(img))
         # print()
         print(path)
         print(rst.attributes)
+        print(rst.describe())
         print()

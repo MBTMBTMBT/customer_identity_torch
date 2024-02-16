@@ -65,7 +65,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch,
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
         # Select a uniform scale for the entire batch
-        scale_factor = random.uniform(0.35, 1)
+        scale_factor = random.uniform(0.25, 1)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels, scale_factor)
 
         optimizer.zero_grad()
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-15/freeze-half-16')
+    writer = SummaryWriter('runs/24-2-16/freeze-half-16')
 
     # early stopping params
     early_stopping_patience = 5

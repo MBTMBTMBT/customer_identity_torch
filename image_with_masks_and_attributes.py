@@ -31,17 +31,21 @@ class ImageWithMasksAndAttributes:
             self.plane_attribute_dict[attribute] = self.attributes[attribute]
 
         self.selective_attribute_dict: dict[str, dict[str, float]] = {}
-        for category in sorted(list(self.categories_and_attributes.selective_categories.keys())):
+        for category in sorted(list(self.categories_and_attributes.selective_attributes.keys())):
             self.selective_attribute_dict[category] = {}
             temp_list: list[float] = []
-            for attribute in self.categories_and_attributes.selective_categories[category]:
+            for attribute in self.categories_and_attributes.selective_attributes[category]:
                 temp_list.append(self.attributes[attribute])
             softmax_list = _softmax(temp_list)
-            for i, attribute in enumerate(self.categories_and_attributes.selective_categories[category]):
+            for i, attribute in enumerate(self.categories_and_attributes.selective_attributes[category]):
                 self.selective_attribute_dict[category][attribute] = softmax_list[i]
 
+    def describe(self) -> str:
+        # abstract method
+        pass
 
-def _max_value_tuple(some_dict: dict[str, float]) ->tuple[str, float]:
+
+def _max_value_tuple(some_dict: dict[str, float]) -> tuple[str, float]:
     max_key = max(some_dict, key=some_dict.get)
     return max_key, some_dict[max_key]
 
@@ -51,16 +55,79 @@ class ImageOfPerson(ImageWithMasksAndAttributes):
                  categories_and_attributes: CategoriesAndAttributes):
         super().__init__(image, masks, attributes, categories_and_attributes)
 
-    def describe(self, return_rate=False):
-        gender = ('man', self.attributes['Male']) if self.attributes['Male'] > self.categories_and_attributes.thresholds_pred['Male'] else ('woman', 1-self.attributes['Male'])
+    @classmethod
+    def from_parent_instance(cls, parent_instance: ImageWithMasksAndAttributes) -> 'ImageOfPerson':
+        """
+        Creates an instance of ImageOfPerson using the properties of an
+        instance of ImageWithMasksAndAttributes.
+        """
+        return cls(image=parent_instance.image,
+                   masks=parent_instance.masks,
+                   attributes=parent_instance.attributes,
+                   categories_and_attributes=parent_instance.categories_and_attributes)
+
+    def describe(self) -> str:
+        male = (self.attributes['Male'] > self.categories_and_attributes.thresholds_pred['Male'], self.attributes['Male'])
+        has_hair = (
+        self.attributes['hair'] > self.categories_and_attributes.thresholds_pred['hair'], self.attributes['hair'])
         hair_colour = _max_value_tuple(self.selective_attribute_dict['hair_colour'])
         hair_shape = _max_value_tuple(self.selective_attribute_dict['hair_shape'])
         facial_hair = _max_value_tuple(self.selective_attribute_dict['facial_hair'])
-        bangs = (True, self.attributes['Bangs']) if self.attributes['Bangs'] > self.categories_and_attributes.thresholds_pred['Bangs'] else (False, self.attributes['Bangs'])
-        glasses = (True, self.attributes['Eyeglasses']) if self.attributes['Eyeglasses'] > self.categories_and_attributes.thresholds_pred['Eyeglasses'] else (False, self.attributes['Eyeglasses'])
-        earrings = (True, self.attributes['Wearing_Earrings']) if self.attributes['Wearing_Earrings'] > self.categories_and_attributes.thresholds_pred['Wearing_Earrings'] else (False, self.attributes['Wearing_Earrings'])
-        necklace = (True, self.attributes['Wearing_Necklace']) if self.attributes['Wearing_Necklace'] > self.categories_and_attributes.thresholds_pred['Wearing_Necklace'] else (False, self.attributes['Wearing_Necklace'])
-        necktie = (True, self.attributes['Wearing_Necktie']) if self.attributes['Wearing_Necktie'] > self.categories_and_attributes.thresholds_pred['Wearing_Necktie'] else (False, self.attributes['Wearing_Necktie'])
-        describe_hair = self.attributes['hair'] > self.categories_and_attributes.thresholds_pred['hair']
+        # bangs = (
+        #     self.attributes['Bangs'] > self.categories_and_attributes.thresholds_pred['Bangs'],
+        #     self.attributes['Bangs'])
+        hat = (self.attributes['Wearing_Hat'] > self.categories_and_attributes.thresholds_pred['Wearing_Hat'],
+                   self.attributes['Wearing_Hat'])
+        glasses = (self.attributes['Eyeglasses'] > self.categories_and_attributes.thresholds_pred['Eyeglasses'],
+                   self.attributes['Eyeglasses'])
+        earrings = (
+            self.attributes['Wearing_Earrings'] > self.categories_and_attributes.thresholds_pred['Wearing_Earrings'],
+            self.attributes['Wearing_Earrings'])
+        necklace = (
+            self.attributes['Wearing_Necklace'] > self.categories_and_attributes.thresholds_pred['Wearing_Necklace'],
+            self.attributes['Wearing_Necklace'])
+        necktie = (
+            self.attributes['Wearing_Necktie'] > self.categories_and_attributes.thresholds_pred['Wearing_Necktie'],
+            self.attributes['Wearing_Necktie'])
 
-        description = ""
+        description = "This customer has "
+        if has_hair[0]:
+            hair_shape_str = ''
+            if hair_shape[0] == 'Straight_Hair':
+                hair_shape_str = ' straight'
+            elif hair_shape[0] == 'Wavy_Hair':
+                hair_shape_str = ' wavy'
+            if hair_colour[0] == 'Black_Hair':
+                description += 'black%s hair, ' % hair_shape_str
+            elif hair_colour[0] == 'Blond_Hair':
+                description += 'blond%s hair, ' % hair_shape_str
+            elif hair_colour[0] == 'Brown_Hair':
+                description += 'brown%s hair, ' % hair_shape_str
+            elif hair_colour[0] == 'Gray_Hair':
+                description += 'gray%s hair, ' % hair_shape_str
+
+        if male:  # here 'male' is only used to determine whether it is confident to decide whether the person has beard
+            if not facial_hair[0] == 'No_Beard':
+                description += 'and has beard. '
+
+        if hat[0] or glasses[0]:
+            description += 'I can also see this customer wearing '
+            if hat[0] and glasses[0]:
+                description += 'a hat and a pair of glasses. '
+            elif hat[0]:
+                description += 'a hat. '
+            else:
+                description += 'a pair of glasses. '
+
+        if earrings[0] or necklace[0] or necktie[0]:
+            description += 'This customer might also wear '
+            wearables = []
+            if earrings[0]:
+                wearables.append('a pair of earrings')
+            if necklace[0]:
+                wearables.append('a necklace')
+            if necktie[0]:
+                wearables.append('a necktie')
+            description += ", ".join(wearables[:-2] + [" and ".join(wearables[-2:])]) + '. '
+
+        return description
