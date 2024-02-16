@@ -639,6 +639,6 @@ def find_nearest_colour_family(colour, colour_families):
 
 
 if __name__ == "__main__":
-    image_dict = load_images_to_dict('hair_colours')
+    image_dict = load_images_to_dict('legacy/hair_colours')
     hair_colour_table = generate_colour_table(image_dict, HAIR_COLOURS)
     print(hair_colour_table)
