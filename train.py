@@ -306,11 +306,13 @@ if __name__ == "__main__":
         best_val_loss = float('inf')
 
     # train loop
-    num_epochs = 60
+    num_epochs = 50
     mode = 1
     for epoch in range(start_epoch, num_epochs):
-        if epoch >= 30:
+        if epoch >= 25:
             mode = 0
+        else:
+            mode = 1
         print(f'Epoch {epoch+1}/{num_epochs}, mode={mode}')
         print('-' * 10)
 
