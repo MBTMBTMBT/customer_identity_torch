@@ -57,6 +57,6 @@ class CelebAMaskHQCategoriesAndAttributes(CategoriesAndAttributes):
     # set specific thresholds:
     thresholds_mask['eye_g'] = 0.25
     thresholds_pred['Eyeglasses'] = 0.25
-    thresholds_pred['Wearing_Earrings'] = 0.4
-    thresholds_pred['Wearing_Necklace'] = 0.2
-    thresholds_pred['Wearing_Necktie'] = 0.2
+    thresholds_pred['Wearing_Earrings'] = 0.45
+    thresholds_pred['Wearing_Necklace'] = 0.45
+    thresholds_pred['Wearing_Necktie'] = 0.45
