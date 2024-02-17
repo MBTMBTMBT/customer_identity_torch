@@ -93,7 +93,7 @@ if __name__ == '__main__':
     model.eval()
     test_path = './test_images'
     p = Predictor(model, device, categories_and_attributes)
-    images_list, path_list = read_images(test_path, size=256)
+    images_list, path_list = read_images(test_path, size=128)
     for img, path in zip(images_list, path_list):
         rst = ImageOfPerson.from_parent_instance(p.predict(img))
         # print()
