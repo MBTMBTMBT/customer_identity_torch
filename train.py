@@ -94,10 +94,16 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch,
         accuracy = positive_accuracy
 
         if mode == 1:
+            # print('Training segmentation only.')
             model.unfreeze_segment_model()
             mask_loss.backward()
-        else:
+        elif mode == 0:
+            # print('Training classification only.')
             model.freeze_segment_model()
+            pred_loss.backward()
+        else:
+            # print('Training whole network.')
+            model.unfreeze_segment_model()
             loss.backward()
 
         optimizer.step()
@@ -130,6 +136,10 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
         attributes = attributes.to(device)
         # colour_labels = colour_labels.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
+
+        scale_factor = random.uniform(0.2, 1)
+        inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+                                                                                                     scale_factor)
 
         pred_masks, pred_classes = model(inputs)
         mask_loss = criterion_mask(pred_masks, mask_labels)
@@ -259,7 +269,7 @@ if __name__ == "__main__":
     # val_dataset = ConcatDataset([val_dataset, lip_val_dataset])
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=16)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=24)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=16)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=16)
 
@@ -284,7 +294,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-16/freeze-half-16')
+    writer = SummaryWriter('runs/24-2-18/whole-net-32')
 
     # early stopping params
     early_stopping_patience = 5
@@ -306,13 +316,13 @@ if __name__ == "__main__":
         best_val_loss = float('inf')
 
     # train loop
-    num_epochs = 50
-    mode = 1
+    num_epochs = 60
+    mode = 3
     for epoch in range(start_epoch, num_epochs):
-        if epoch >= 25:
-            mode = 0
-        else:
-            mode = 1
+        # if epoch >= 5:
+        #     mode = 0
+        # else:
+        #     mode = 1
         print(f'Epoch {epoch+1}/{num_epochs}, mode={mode}')
         print('-' * 10)
 
@@ -333,7 +343,7 @@ if __name__ == "__main__":
         writer.add_scalar('LossPred/Test', pred_test_loss, epoch)
 
         # save the model
-        if mode == 0:
+        if mode != 1:
             if val_loss < best_val_loss:
                 print(f"Validation loss decreased ({best_val_loss:.6f} --> {val_loss:.6f}).  Saving model ...")
                 save_model(epoch, model, optimizer, val_loss, path=f"{model_dir}/model_epoch_{epoch}.pth")
