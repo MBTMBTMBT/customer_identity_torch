@@ -235,7 +235,7 @@ class CombinedModel(nn.Module):
 class MultiLabelResNet(nn.Module):
     def __init__(self, num_labels, input_channels=3, sigmoid=True, pretrained=True,):
         super(MultiLabelResNet, self).__init__()
-        self.model = models.resnet34(pretrained=pretrained)
+        self.model = models.resnet18(pretrained=pretrained)
         self.sigmoid = sigmoid
 
         if input_channels != 3:
