@@ -78,11 +78,11 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     categories_and_attributes = CelebAMaskHQCategoriesAndAttributes
     cat_layers = CelebAMaskHQCategoriesAndAttributes.merged_categories.keys().__len__()
-    segment_model = UNetWithResnet18Encoder(num_classes=cat_layers)
+    segment_model = UNetWithResnetEncoder(num_classes=cat_layers)
     predictions = len(CelebAMaskHQCategoriesAndAttributes.attributes) - len(
         CelebAMaskHQCategoriesAndAttributes.avoided_attributes) + len(CelebAMaskHQCategoriesAndAttributes.mask_labels)
     predict_model = MultiLabelResNet(num_labels=predictions, input_channels=cat_layers + 3)
-    model = CombinedModelNoRegression(segment_model, predict_model, cat_layers=cat_layers)
+    model = CombinedModel(segment_model, predict_model, cat_layers=cat_layers)
     latest_checkpoint = find_latest_checkpoint('saved-models')
     if latest_checkpoint:
         print(f"Loading model from {latest_checkpoint}")

@@ -255,21 +255,8 @@ if __name__ == "__main__":
         seed=seed,
     )
 
-    # lip_dataset = LIPDataset(root_dir=r"/home/bentengma/work_space/LIP")
-    # lip_dataset = AugmentedDataset(
-    #     dataset_source=lip_dataset, output_size=image_size,
-    #     flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.9, 1.1),
-    #     noise_level=(0, 1), blur_radius=(0, 1), brightness_factor=(0.75, 1.25),
-    #     seed=0, pil=True,
-    # )
-    # train_size = int(0.9 * len(lip_dataset))
-    # val_size = len(lip_dataset) - train_size
-    # lip_train_dataset, lip_val_dataset = random_split(lip_dataset, [train_size, val_size])
-    # train_dataset = ConcatDataset([train_dataset, lip_train_dataset])
-    # val_dataset = ConcatDataset([val_dataset, lip_val_dataset])
-
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=24)
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=16)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=16)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=16)
 
@@ -277,11 +264,11 @@ if __name__ == "__main__":
     # model
     cat_layers = CelebAMaskHQCategoriesAndAttributes.merged_categories.keys().__len__()
     # segment_model = DeepLabV3PlusMobileNetV3(num_classes=4)  # ['hair', 'hat', 'eye_g', 'skin', ] 'brow', 'eye', 'mouth', 'nose', ]
-    segment_model = UNetWithResnet18Encoder(num_classes=cat_layers)
+    segment_model = UNetWithResnetEncoder(num_classes=cat_layers)
     # predict_model = MultiLabelMobileNetV3Large(4, 7)   # 'hair', 'hat', 'glasses', 'face', ; first three with colours, rgb
     predictions = len(CelebAMaskHQCategoriesAndAttributes.attributes) - len(CelebAMaskHQCategoriesAndAttributes.avoided_attributes) + len(CelebAMaskHQCategoriesAndAttributes.mask_labels)
     predict_model = MultiLabelResNet(num_labels=predictions, input_channels=cat_layers+3)
-    model = CombinedModelNoRegression(segment_model, predict_model, cat_layers=cat_layers)
+    model = CombinedModel(segment_model, predict_model, cat_layers=cat_layers)
 
     # choose device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -294,7 +281,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-18/whole-net-32')
+    writer = SummaryWriter('runs/24-2-18/whole-net-16')
 
     # early stopping params
     early_stopping_patience = 5
