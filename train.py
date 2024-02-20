@@ -65,7 +65,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch,
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
         # Select a uniform scale for the entire batch
-        scale_factor = random.uniform(0.2, 1)
+        scale_factor = random.uniform(0.5, 1)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels, scale_factor)
 
         optimizer.zero_grad()
@@ -137,7 +137,9 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
         # colour_labels = colour_labels.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
-        scale_factor = random.uniform(0.2, 1)
+        total = len(val_loader)
+        scale_factor = i / total * 0.5 + 0.5
+        # scale_factor = random.uniform(0.2, 1)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
                                                                                                      scale_factor)
 
@@ -237,7 +239,7 @@ if __name__ == "__main__":
 
     image_size = (256, 256)
     # datasets
-    full_dataset = MergedCelebAMaskHQDataset(root_dir=r"/home/bentengma/work_space/CelebAMask-HQ", output_size=image_size)
+    full_dataset = MergedCelebAMaskHQDataset(root_dir=r"/home/bentengma/work_space/CelebAMask-HQ", output_size=image_size, replay=1)
     train_size = int(0.9 * len(full_dataset))
     val_size = int(0.09 * len(full_dataset))
     test_size = len(full_dataset) - train_size - val_size
@@ -251,14 +253,14 @@ if __name__ == "__main__":
     val_dataset = AugmentedDataset(
         dataset_source=val_dataset, output_size=image_size, 
         flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(1, 1),
-        noise_level=(0, 1), blur_radius=(0, 1), brightness_factor=(0.85, 1.25), 
+        noise_level=(0, 0), blur_radius=(0, 0), brightness_factor=(1, 1),
         seed=seed,
     )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=16)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=16)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=16)
+    train_loader = DataLoader(train_dataset, batch_size=12, shuffle=True, num_workers=24)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=24)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=24)
 
     from categories_and_attributes import CelebAMaskHQCategoriesAndAttributes
     # model
@@ -281,7 +283,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-18/whole-net-16')
+    writer = SummaryWriter('runs/24-2-20/freeze-half-12')
 
     # early stopping params
     early_stopping_patience = 5
@@ -304,12 +306,12 @@ if __name__ == "__main__":
 
     # train loop
     num_epochs = 60
-    mode = 3
+    mode = 1
     for epoch in range(start_epoch, num_epochs):
-        # if epoch >= 5:
-        #     mode = 0
-        # else:
-        #     mode = 1
+        if epoch >= 15:
+            mode = 2
+        else:
+            mode = 1
         print(f'Epoch {epoch+1}/{num_epochs}, mode={mode}')
         print('-' * 10)
 
