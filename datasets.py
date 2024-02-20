@@ -17,7 +17,7 @@ from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCateg
 
 
 class CelebAMaskHQDataset(Dataset):
-    replay_attributes = ['Wearing_Hat', 'Eyeglasses', ]
+    replay_attributes = ['Wearing_Hat', 'Eyeglasses', 'Blond_Hair']
     def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes:CategoriesAndAttributes=None):
         self.categories_and_attributes = CelebAMaskHQCategoriesAndAttributes() if categories_and_attributes is None else categories_and_attributes
         self.output_size = output_size
