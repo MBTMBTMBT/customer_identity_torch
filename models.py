@@ -123,23 +123,21 @@ class CombinedModel(nn.Module):
         self.segment_model = segment_model
         self.predict_model = predict_model
         self.cat_layers = cat_layers
+        self.freeze_seg = False
 
     def forward(self, x: torch.Tensor):
         seg_masks = self.segment_model(x)
+        seg_masks_ = seg_masks.detach()
         if self.cat_layers:
-            seg_masks_ = seg_masks[:, 0:self.cat_layers]
+            seg_masks_ = seg_masks_[:, 0:self.cat_layers]
             x = torch.cat((x, seg_masks_), dim=1)
         else:
-            x = torch.cat((x, seg_masks), dim=1)
+            x = torch.cat((x, seg_masks_), dim=1)
         logic_outputs = self.predict_model(x)
         return seg_masks, logic_outputs
 
     def freeze_segment_model(self):
-        for param in self.segment_model.parameters():
-            param.requires_grad = False
         self.segment_model.eval()
 
     def unfreeze_segment_model(self):
-        for param in self.segment_model.parameters():
-            param.requires_grad = True
         self.segment_model.train()
