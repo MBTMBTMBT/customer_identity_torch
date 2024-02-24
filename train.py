@@ -9,6 +9,27 @@ from datasets import *
 from utils import *
 
 
+# def _scale_images_uniformly(images: torch.Tensor, scale_factor: float):
+#     """
+#     Scale a batch of images with a uniform scale factor, ensuring even dimensions.
+#
+#     :param images: A torch tensor of shape (batch, channel, h, w)
+#     :param scale_factor: Scale factor
+#     :return: Scaled images with even dimensions
+#     """
+#     assert 0 < scale_factor < 1
+#
+#     # Compute new size and ensure it's even
+#     new_h, new_w = int(images.shape[2] * scale_factor), int(images.shape[3] * scale_factor)
+#     new_h = new_h + 1 if new_h % 2 != 0 else new_h
+#     new_w = new_w + 1 if new_w % 2 != 0 else new_w
+#
+#     # Resize all images in the batch
+#     scaled_images = F.interpolate(images, size=(new_h, new_w), mode='bilinear', align_corners=False)
+#
+#     return scaled_images
+
+
 def _scale_images_uniformly(images: torch.Tensor, scale_factor: float):
     """
     Scale a batch of images with a uniform scale factor, ensuring even dimensions.
@@ -17,17 +38,22 @@ def _scale_images_uniformly(images: torch.Tensor, scale_factor: float):
     :param scale_factor: Scale factor
     :return: Scaled images with even dimensions
     """
-    assert 0 < scale_factor < 1
+    # Ensure scale factor is positive
+    assert scale_factor > 0, "Scale factor must be positive"
 
     # Compute new size and ensure it's even
     new_h, new_w = int(images.shape[2] * scale_factor), int(images.shape[3] * scale_factor)
     new_h = new_h + 1 if new_h % 2 != 0 else new_h
     new_w = new_w + 1 if new_w % 2 != 0 else new_w
 
+    # Ensure new dimensions are valid
+    assert new_h > 0 and new_w > 0, "New dimensions must be positive integers"
+
     # Resize all images in the batch
     scaled_images = F.interpolate(images, size=(new_h, new_w), mode='bilinear', align_corners=False)
 
     return scaled_images
+
 
 
 def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch, device, mode=0):
@@ -65,7 +91,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch,
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
         # Select a uniform scale for the entire batch
-        scale_factor = random.uniform(0.5, 1)
+        scale_factor = random.uniform(0.2, 1.5)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels, scale_factor)
 
         optimizer.zero_grad()
@@ -138,7 +164,7 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
         total = len(val_loader)
-        scale_factor = i / total * 0.5 + 0.5
+        scale_factor = i / total * 1.3 + 0.2
         # scale_factor = random.uniform(0.2, 1)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
                                                                                                      scale_factor)
@@ -258,7 +284,7 @@ if __name__ == "__main__":
     )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=12, shuffle=True, num_workers=24)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=24)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=24)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=24)
 
@@ -283,7 +309,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-20/freeze-half-12')
+    writer = SummaryWriter('runs/24-2-24/freeze-half-8')
 
     # early stopping params
     early_stopping_patience = 5
