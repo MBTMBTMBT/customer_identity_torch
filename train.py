@@ -1,5 +1,5 @@
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split, ConcatDataset
+from torch.utils.data import DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import random
@@ -164,7 +164,7 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
         total = len(val_loader)
-        scale_factor = i / total * 1.3 + 0.2
+        scale_factor = i / total * 1.2 + 0.3
         # scale_factor = random.uniform(0.2, 1)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
                                                                                                      scale_factor)
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     train_size = int(0.9 * len(full_dataset))
     val_size = int(0.09 * len(full_dataset))
     test_size = len(full_dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size])  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
+    train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
     train_dataset = AugmentedDataset(
         dataset_source=train_dataset, output_size=image_size, 
         flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.9, 1.1),
