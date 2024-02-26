@@ -1,5 +1,5 @@
 import torch.optim as optim
-from torch.utils.data import Subset  # DataLoader, random_split
+from torch.utils.data import Subset, DataLoader  # random_split
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import random
