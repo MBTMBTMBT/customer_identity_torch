@@ -1,5 +1,5 @@
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import Subset  # DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import random
@@ -269,7 +269,15 @@ if __name__ == "__main__":
     train_size = int(0.9 * len(full_dataset))
     val_size = int(0.09 * len(full_dataset))
     test_size = len(full_dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
+    # Create indices for training, validation, and test sets
+    train_indices = list(range(0, train_size))
+    val_indices = list(range(train_size, train_size + val_size))
+    test_indices = list(range(train_size + val_size, len(full_dataset)))
+    # Create non-random subsets
+    train_dataset = Subset(full_dataset, train_indices)
+    val_dataset = Subset(full_dataset, val_indices)
+    test_dataset = Subset(full_dataset, test_indices)
+    # train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
     train_dataset = AugmentedDataset(
         dataset_source=train_dataset, output_size=image_size, 
         flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.9, 1.1),
@@ -309,7 +317,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-2-24/freeze-half-8')
+    writer = SummaryWriter('runs/24-2-25/freeze-half-8')
 
     # early stopping params
     early_stopping_patience = 5
