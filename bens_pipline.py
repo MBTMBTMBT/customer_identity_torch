@@ -26,7 +26,7 @@ cat_layers = 4
 
 # CHANGE THESE:
 # segment_model = DeepLabV3PlusMobileNetV3(num_classes=4)  # ['hair', 'hat', 'eye_g', 'skin', ] 'brow', 'eye', 'mouth', 'nose', ]
-segment_model = UNetWithResnet18Encoder(num_classes=4)
+segment_model = UNetWithResnetEncoder(num_classes=4)
 # predict_model = MultiLabelMobileNetV3Large(4, 7)   # 'hair', 'hat', 'glasses', 'face', ; first three with colours, rgb
 predict_model = MultiLabelResNet(num_labels=4, input_channels=7)
 model = CombinedModel(segment_model, predict_model, cat_layers=cat_layers)
