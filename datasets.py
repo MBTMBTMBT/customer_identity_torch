@@ -6,7 +6,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import re
-import enum
+import glob
 from image_with_masks_and_attributes import ImageWithMasksAndAttributes
 from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCategoriesAndAttributes
 
@@ -14,6 +14,22 @@ from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCateg
 # class CategoryType(enum.Enum):
 #     selective = 0
 #     logical = 1
+
+
+class CCPDataset(Dataset):
+    replay_attributes = []
+
+    def __init__(self, root_dir, output_size=(512, 512), replay=10,
+                 categories_and_attributes: CategoriesAndAttributes = None):
+        self.categories_and_attributes = CelebAMaskHQCategoriesAndAttributes() if categories_and_attributes is None else categories_and_attributes
+        self.output_size = output_size
+        self.root_dir = root_dir
+        self.image_dir = os.path.join(root_dir, "photos")
+        self.mask_dir = os.path.join(root_dir, "annotations/pixel-level/")
+        self.label_dir = os.path.join(root_dir, "annotations/image-level")
+        self.mask_path_list = glob.glob(os.path.join(self.mask_dir, '*.mat'))
+        self.label_path_list = glob.glob(os.path.join(self.label_dir, '*.mat'))
+        self.replay = replay
 
 
 class CelebAMaskHQDataset(Dataset):
