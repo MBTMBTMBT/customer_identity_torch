@@ -45,7 +45,7 @@ else:
 bodypix_detector = bodypix.BodyPixDetector()
 
 # prepare hair colour table
-image_dict = load_images_to_dict('hair_colours')
+image_dict = load_images_to_dict('legacy/hair_colours')
 hair_colour_table = generate_colour_table(image_dict, SPESIFIC_COLOURS)
 
 

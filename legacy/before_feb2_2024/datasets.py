@@ -6,20 +6,14 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import re
-import enum
-from image_with_masks_and_attributes import ImageWithMasksAndAttributes
-from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCategoriesAndAttributes
-
-
-# class CategoryType(enum.Enum):
-#     selective = 0
-#     logical = 1
 
 
 class CelebAMaskHQDataset(Dataset):
-    replay_attributes = ['Wearing_Hat', 'Eyeglasses', 'Blond_Hair']
-    def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes:CategoriesAndAttributes=None):
-        self.categories_and_attributes = CelebAMaskHQCategoriesAndAttributes() if categories_and_attributes is None else categories_and_attributes
+    categories = ['cloth', 'r_ear', 'hair', 'l_brow', 'l_eye', 'l_lip', 'mouth', 'neck', 'nose', 'r_brow',
+                  'r_ear', 'r_eye', 'skin', 'u_lip', 'hat', 'l_ear', 'neck_l', 'eye_g']
+    replay_categories = ['Wearing_Hat', 'Eyeglasses',]
+
+    def __init__(self, root_dir, output_size=(512, 512), replay=10):
         self.output_size = output_size
         self.root_dir = root_dir
         self.image_dir = os.path.join(root_dir, "CelebA-HQ-img")
@@ -57,13 +51,13 @@ class CelebAMaskHQDataset(Dataset):
 
         # replay data:
         for _ in range(self.replay):
-            for atr in self.replay_attributes:
+            for atr in self.replay_categories:
                 for i in range(self.original_length):
                     name = self.image_list[i]  # .split('.')[0]
                     if self.has_attribute(name, atr):
                         self.image_list.append(self.image_list[i])
 
-    def __getitem__(self, idx) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx):
         # Load image
         img_name = os.path.join(self.image_dir, self.image_list[idx])
         image = Image.open(img_name)
@@ -71,7 +65,7 @@ class CelebAMaskHQDataset(Dataset):
         # Load masks for this image
         img_idx = self.image_list[idx].split('.')[0].zfill(5)
         masks = []
-        for category in self.categories_and_attributes.mask_categories:
+        for category in self.categories:
             if category in self.mask_dict[img_idx]:
                 mask_path = self.mask_dict[img_idx][category]
                 mask = Image.open(mask_path).convert('L')  # Convert to grayscale
@@ -86,40 +80,11 @@ class CelebAMaskHQDataset(Dataset):
 
         image = image.resize(self.output_size)
 
-        attributes = []
-        for attribute in self.categories_and_attributes.attributes:
-            if attribute in self.categories_and_attributes.avoided_attributes:
-                continue
-            if self.has_attribute(self.image_list[idx], attribute):
-                attributes.append(1.0)
-            else:
-                attributes.append(0.0)
-        for attribute in self.categories_and_attributes.mask_labels:
-            mask = masks[sorted(list(self.categories_and_attributes.merged_categories.keys())).index(attribute)]
-            label = transforms.ToTensor()(mask).any(dim=-1).any(dim=-1).float()
-            attributes.append(label)
-
         # Convert back to Tensor
         image = transforms.ToTensor()(image)
         masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
-        attributes = torch.tensor(attributes, dtype=torch.float)
 
-        return image, masks, attributes
-
-    def get_image(self, idx: int):
-        image_tensor, masks_tensor, attributes_tensor = self.__getitem__(idx)
-        image_np, masks_np, attributes_np = np.array(image_tensor), np.array(masks_tensor), np.array(attributes_tensor)
-        masks = {}
-        for i, category in enumerate(self.categories_and_attributes.mask_categories):
-            masks[category] = masks_np[i]
-        attributes = {}
-        c = 0
-        for i, attribute in enumerate(self.categories_and_attributes.attributes):
-            if attribute in self.categories_and_attributes.avoided_attributes:
-                c += 1
-                continue
-            attributes[attribute] = float(attributes_np[i - c])
-        return ImageWithMasksAndAttributes(image_np, masks, attributes)
+        return image, masks
 
     def __len__(self):
         return len(self.image_list)
@@ -134,66 +99,63 @@ class CelebAMaskHQDataset(Dataset):
 class SelectedCelebAMaskHQDataset(CelebAMaskHQDataset):
     selected_categories = ['cloth', 'hair', 'hat', 'eye_g', 'skin',]
     indices = [0, 2, 9, 10, 8,]
-    def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes=None):
-        super(SelectedCelebAMaskHQDataset, self).__init__(root_dir, output_size, replay=replay, categories_and_attributes=categories_and_attributes)
-        self.selected_indices = [self.categories_and_attributes.mask_categories.index(cat) for cat in self.selected_categories]
+    def __init__(self, root_dir, output_size=(512, 512)):
+        super(SelectedCelebAMaskHQDataset, self).__init__(root_dir, output_size)
+        self.selected_indices = [CelebAMaskHQDataset.categories.index(cat) for cat in self.selected_categories]
 
     def __getitem__(self, idx):
-        image, masks_all, attributes = super(SelectedCelebAMaskHQDataset, self).__getitem__(idx)
+        image, masks_all = super(SelectedCelebAMaskHQDataset, self).__getitem__(idx)
         masks_selected = masks_all[self.selected_indices]
-        return image, masks_selected, attributes
+        return image, masks_selected
     
 
-class MergedCelebAMaskHQDataset(CelebAMaskHQDataset):  # 'brow', 'eye', 'mouth', 'nose', ]
-    def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes=None):
-        super(MergedCelebAMaskHQDataset, self).__init__(root_dir, output_size, replay=replay,
-                                                        categories_and_attributes=categories_and_attributes)
+class MergedCelebAMaskHQDataset(CelebAMaskHQDataset):
+    # merged_categories = ['cloth', 'ear', 'hair', 'brow', 'eye', 'mouth', 'neck', 'nose', 'skin', 'hat', 'eye_g', 'neck_l']
+    merged_categories = ['hair', 'hat', 'eye_g', 'skin',]  # 'brow', 'eye', 'mouth', 'nose', ]
+    def __init__(self, root_dir, output_size=(512, 512)):
+        super(MergedCelebAMaskHQDataset, self).__init__(root_dir, output_size)
+        self.output_size = output_size
 
     def __getitem__(self, idx):
-        image, unmerged_masks, attributes = super(MergedCelebAMaskHQDataset, self).__getitem__(idx)
+        image, unmerged_masks = super(MergedCelebAMaskHQDataset, self).__getitem__(idx)
 
         # Convert Tensor images to PIL for operations
         image = transforms.ToPILImage()(image)
         unmerged_masks = [transforms.ToPILImage()(mask) for mask in unmerged_masks]
 
         masks = []
+        mask_mapping = {
+            'ear': ['l_ear', 'r_ear'],
+            'brow': ['l_brow', 'r_brow'],
+            'eye': ['l_eye', 'r_eye'],
+            'mouth': ['l_lip', 'u_lip', 'mouth']
+        }
 
-        for category in sorted(list(self.categories_and_attributes.merged_categories.keys())):
-            combined_mask_np = np.zeros_like(np.array(unmerged_masks[0]))  # Initialize with zeros
-            for sub_category in self.categories_and_attributes.merged_categories[category]:
-                sub_cat_idx = self.categories_and_attributes.mask_categories.index(sub_category)
-
-                mask_to_merge_np = np.array(unmerged_masks[sub_cat_idx])
-
-                # Use logical or operation to combine masks
-                combined_mask_np = np.logical_or(combined_mask_np, mask_to_merge_np).astype(np.uint8)
-
-            masks.append(Image.fromarray(combined_mask_np * 255, 'L'))  # Convert back to PIL and append
+        for category in self.merged_categories:
+            if category in mask_mapping:
+                combined_mask_np = np.zeros_like(np.array(unmerged_masks[0])) # Initialize with zeros
+                for sub_category in mask_mapping[category]:
+                    sub_cat_idx = CelebAMaskHQDataset.categories.index(sub_category)
+                    
+                    mask_to_merge_np = np.array(unmerged_masks[sub_cat_idx])
+                    
+                    # Use logical or operation to combine masks
+                    combined_mask_np = np.logical_or(combined_mask_np, mask_to_merge_np).astype(np.uint8)
+                
+                masks.append(Image.fromarray(combined_mask_np * 255, 'L'))  # Convert back to PIL and append
+            else:
+                cat_idx = CelebAMaskHQDataset.categories.index(category)
+                masks.append(unmerged_masks[cat_idx])
 
         # Convert back to Tensor
         image = transforms.ToTensor()(image)
         masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
 
-        return image, masks, attributes
-
-    def get_image(self, idx: int):
-        image_tensor, masks_tensor, attributes_tensor = self.__getitem__(idx)
-        image_np, masks_np, attributes_np = np.array(image_tensor), np.array(masks_tensor), np.array(attributes_tensor)
-        masks = {}
-        for i, category in enumerate(sorted(list(self.categories_and_attributes.merged_categories.keys()))):
-            masks[category] = masks_np[i]
-        attributes = {}
-        c = 0
-        for i, attribute in enumerate(self.categories_and_attributes.attributes):
-            if attribute in self.categories_and_attributes.avoided_attributes:
-                c += 1
-                continue
-            attributes[attribute] = float(attributes_np[i - c])
-        return ImageWithMasksAndAttributes(image_np, masks, attributes)
+        return image, masks
 
 
 class AugmentedDataset(Dataset):
-    def __init__(self, dataset_source: Dataset, flip_prob=0.5, crop_ratio=(0.8, 0.8), scale_factor=(0.5, 2), output_size=(512, 512),
+    def __init__(self, dataset_source:Dataset, flip_prob=0.5, crop_ratio=(0.8, 0.8), scale_factor=(0.5, 2), output_size=(512, 512), 
                  noise_level=(0, 10), blur_radius=(0, 2), brightness_factor=(0.75, 1.25), pil=False, seed:int=None):
         self.source = dataset_source
         
@@ -262,7 +224,7 @@ class AugmentedDataset(Dataset):
         image = image.resize(self.output_size)
 
         # Calculate random color for padding if necessary
-        random_color = self._get_random_colour(image)
+        random_color = self._get_random_color(image)
 
          # Apply scale
         scale_factor = params["scale_factor"]
@@ -277,7 +239,7 @@ class AugmentedDataset(Dataset):
             padding_b = self.output_size[1] - scaled_size[1] - padding_t
 
             # Calculate random color for padding
-            random_color = self._get_random_colour(image)
+            random_color = self._get_random_color(image)
             # Apply padding
             image = ImageOps.expand(image, border=(padding_l, padding_t, padding_r, padding_b), fill=random_color)
         elif scale_factor > 1:
@@ -315,7 +277,7 @@ class AugmentedDataset(Dataset):
         return image, ori_image
 
     def __getitem__(self, idx):
-        image, masks, attributes = self.source.__getitem__(idx)
+        image, masks = self.source.__getitem__(idx)
 
         # Generate transform params for this sample
         transform_params = self._get_transform_params()
@@ -328,12 +290,12 @@ class AugmentedDataset(Dataset):
         ori_image = transforms.ToTensor()(ori_image)
         masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
 
-        return image, masks, attributes, ori_image
+        return image, masks, ori_image
     
     def __len__(self):
         return self.source.__len__()
     
-    def _get_random_colour(self, image):
+    def _get_random_color(self, image):
         mode = image.mode
         if mode == 'RGB':
             return tuple(np.random.randint(0, 256, size=3).tolist())
@@ -502,18 +464,9 @@ class LIPDataset(Dataset):
 # Usage
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
-
-    celebAMaskHQCategoriesAndAttributes = CelebAMaskHQCategoriesAndAttributes()
-    # dataset = LIPDataset(root_dir=r"D:\workspace\LIP")
-    # dataset = AugmentedDataset(
-    #     dataset_source=dataset, output_size=(256,256),
-    #     flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.8, 1.2),
-    #     noise_level=(0, 1), blur_radius=(0, 1), brightness_factor=(0.85, 1.25),
-    #     seed=0, pil=True,
-    # )
-    dataset = MergedCelebAMaskHQDataset(root_dir=r"/home/bentengma/work_space/CelebAMask-HQ", output_size=(256, 256))
+    dataset = LIPDataset(root_dir=r"D:\workspace\LIP")
     dataset = AugmentedDataset(
-        dataset_source=dataset, output_size=(256, 256),
+        dataset_source=dataset, output_size=(256,256), 
         flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.8, 1.2),
         noise_level=(0, 1), blur_radius=(0, 1), brightness_factor=(0.85, 1.25),
         seed=0, pil=True,
@@ -526,29 +479,19 @@ if __name__ == "__main__":
     #     seed=0,
     # )
 
-    for batch_idx, (image_batch, masks_batch, attribute_batch, ori_image_batch) in enumerate(dataloader):
+    for batch_idx, (image_batch, masks_batch, _) in enumerate(dataloader):
         # Because we are using a batch size of 1, we need to squeeze the batch dimension
         image = image_batch.squeeze(0)
         masks = masks_batch.squeeze(0)
-        attribute = attribute_batch.squeeze(0)
-        ori_image_batch = ori_image_batch.squeeze(0)
 
         # Show the original image
         show_image(image, "Image")
 
         # Show some masks
         # Change these indices to see different masks
-        show_masks(masks, sorted(list(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())), range(len(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())))
-
+        show_masks(masks, LIPDataset.categories, range(len(LIPDataset.categories)))
+        
         plt.show()
-
-        input()
-    # dataset = MergedCelebAMaskHQDataset(root_dir=r"/home/bentengma/work_space/CelebAMask-HQ", output_size=(256, 256))
-    #
-    # for i in range(dataset.__len__()):
-    #     image = dataset.get_image(i)
-    #     print(image.masks, image.attributes)
-    #     input()
 
     # from torch.utils.data import DataLoader
     # dataset = SelectedCelebAMaskHQDataset(root_dir=r"D:\workspace\CelebAMask-HQ", output_size=(256, 256))

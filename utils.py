@@ -227,7 +227,7 @@ def load_model(model, optimizer, path="model.pth", cpu_only=False):
 
 def find_latest_checkpoint(model_dir):
     """Find the latest model checkpoint in the given directory."""
-    checkpoints = [f for f in os.listdir(model_dir) if f.startswith('best_model_epoch_') and f.endswith('.pth')]
+    checkpoints = [f for f in os.listdir(model_dir) if f.startswith('model_epoch_') and f.endswith('.pth')]
     if not checkpoints:
         return None
     
@@ -639,6 +639,6 @@ def find_nearest_colour_family(colour, colour_families):
 
 
 if __name__ == "__main__":
-    image_dict = load_images_to_dict('hair_colours')
+    image_dict = load_images_to_dict('legacy/hair_colours')
     hair_colour_table = generate_colour_table(image_dict, HAIR_COLOURS)
     print(hair_colour_table)
