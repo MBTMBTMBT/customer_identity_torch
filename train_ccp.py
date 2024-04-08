@@ -15,7 +15,7 @@ if __name__ == "__main__":
     image_size = (256, 256)
     # datasets
     full_dataset = MergedCCPDataset(root_dir=r"/home/bentengma/work_space/clothing-co-parsing-master", categories_and_attributes=CCPCategoriesAndAttributes, output_size=image_size)
-    train_size = int(0.9 * len(full_dataset))
+    train_size = int(0.95 * len(full_dataset))
     val_size = len(full_dataset) - train_size  # int(0.09 * len(full_dataset))
     # test_size = len(full_dataset) - train_size - val_size
     # Create indices for training, validation, and test sets
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     writer = SummaryWriter('runs/24-4-8/ccp')
 
     # early stopping params
-    early_stopping_patience = 5
+    early_stopping_patience = 10
     early_stopping_counter = 0
 
     # check model saving dir
