@@ -80,7 +80,7 @@ class CCPDataset(Dataset):
         groundtruth_tensor = torch.zeros(1, *self.output_size,
                                          dtype=torch.long)  # Assuming you want integer labels for segmentation
 
-        has_pixel_labels = torch.tensor(False)
+        has_pixel_labels = torch.tensor(0)
         if idx_path in self.mask_dir:
             annotation_mat = loadmat(f'annotations/pixel-level/{name}.mat')
             groundtruth = annotation_mat['groundtruth']
@@ -99,14 +99,14 @@ class CCPDataset(Dataset):
             for label in pixel_labels:
                 if label in labels_str_list:
                     labels[labels_str_list.index(label)] = 1
-            has_pixel_labels = torch.tensor(True)
+            has_pixel_labels = torch.tensor(1)
 
         elif idx_path in self.label_dir:
             image_labels = self.get_image_labels(idx_path)  # Assuming this function returns a list of label names
             for label in image_labels:
                 if label in labels_str_list:
                     labels[labels_str_list.index(label)] = 1
-            has_pixel_labels = torch.tensor(False)
+            has_pixel_labels = torch.tensor(0)
 
         return image_tensor, groundtruth_tensor, labels, has_pixel_labels
 
