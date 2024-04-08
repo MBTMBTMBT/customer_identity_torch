@@ -494,8 +494,25 @@ class AugmentedDataset(Dataset):
 
         return image, ori_image
 
+    # def __getitem__(self, idx):
+    #     image, masks, attributes = self.source.__getitem__(idx)
+    #
+    #     # Generate transform params for this sample
+    #     transform_params = self._get_transform_params()
+    #
+    #     # Apply the same augmentations to image and masks using the generated params
+    #     image, ori_image = self._apply_image_transforms(image, transform_params)
+    #     masks = [self._apply_common_transforms(mask, transform_params) for mask in masks]
+    #
+    #     image = transforms.ToTensor()(image)
+    #     # ori_image = transforms.ToTensor()(ori_image)
+    #     masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
+    #
+    #     return image, masks, attributes,  # ori_image
+
     def __getitem__(self, idx):
-        image, masks, attributes = self.source.__getitem__(idx)
+        # Unpack the first three known returns and capture any additional ones in 'extra_returns'
+        image, masks, attributes, *extra_returns = self.source.__getitem__(idx)
 
         # Generate transform params for this sample
         transform_params = self._get_transform_params()
@@ -505,13 +522,14 @@ class AugmentedDataset(Dataset):
         masks = [self._apply_common_transforms(mask, transform_params) for mask in masks]
 
         image = transforms.ToTensor()(image)
-        # ori_image = transforms.ToTensor()(ori_image)
+        # ori_image = transforms.ToTensor()(ori_image)  # Commented out as per your code
         masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
 
-        return image, masks, attributes,  # ori_image
+        # Return the processed image, masks, attributes, and any extra returns
+        return image, masks, attributes, *extra_returns
 
     def __len__(self):
-        return self.source.__len__()
+        return len(self.source)
 
     def _get_random_colour(self, image):
         mode = image.mode
