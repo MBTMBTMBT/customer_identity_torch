@@ -29,7 +29,7 @@ class CCPDataset(Dataset):
         self.root_dir = root_dir
         self.image_dir = os.path.join(root_dir, "photos")
         self.mask_dir = os.path.join(root_dir, "annotations/pixel-level/")
-        self.label_dir = os.path.join(root_dir, "annotations/image-level")
+        self.label_dir = os.path.join(root_dir, "annotations/image-level/")
         self.mask_path_list = glob.glob(os.path.join(self.mask_dir, '*.mat'))
         self.label_path_list = glob.glob(os.path.join(self.label_dir, '*.mat'))
         self.merged_path_list = self.mask_path_list if pixel_only else self.mask_path_list + self.label_path_list
@@ -63,7 +63,7 @@ class CCPDataset(Dataset):
     def __getitem__(self, idx) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         idx_path = self.merged_path_list[idx]
         name = os.path.splitext(os.path.basename(idx_path))[0]
-        image = imageio.imread(f'photos/{name}.jpg')
+        image = imageio.imread(os.path.join(self.image_dir, f'{name}.jpg'))
 
         # Image transformations: resize, convert color channel order, and normalize
         transform = transforms.Compose([
@@ -81,8 +81,8 @@ class CCPDataset(Dataset):
                                          dtype=torch.long)  # Assuming you want integer labels for segmentation
 
         has_pixel_labels = torch.tensor(0)
-        if idx_path in self.mask_dir:
-            annotation_mat = loadmat(f'annotations/pixel-level/{name}.mat')
+        if idx_path in self.mask_path_list:
+            annotation_mat = loadmat(os.path.join(self.mask_dir, f'{name}.mat'))
             groundtruth = annotation_mat['groundtruth']
 
             # Convert and resize groundtruth
@@ -101,14 +101,22 @@ class CCPDataset(Dataset):
                     labels[labels_str_list.index(label)] = 1
             has_pixel_labels = torch.tensor(1)
 
-        elif idx_path in self.label_dir:
+        elif idx_path in self.label_path_list:
             image_labels = self.get_image_labels(idx_path)  # Assuming this function returns a list of label names
             for label in image_labels:
                 if label in labels_str_list:
                     labels[labels_str_list.index(label)] = 1
             has_pixel_labels = torch.tensor(0)
 
-        return image_tensor, groundtruth_tensor, labels, has_pixel_labels
+        num_classes = len(labels)
+        # Ensure groundtruth_tensor is squeezed in case it has an unnecessary channel dimension
+        groundtruth_tensor = groundtruth_tensor.squeeze(0)  # Assuming groundtruth_tensor is of shape [1, H, W]
+        # Create one-hot encoding
+        H, W = groundtruth_tensor.shape
+        one_hot_groundtruth = torch.zeros((num_classes, H, W), dtype=torch.float32)
+        one_hot_groundtruth.scatter_(0, groundtruth_tensor.unsqueeze(0), 1)
+
+        return image_tensor.to(dtype=torch.float32), one_hot_groundtruth.to(dtype=torch.float32), labels.to(dtype=torch.float32), has_pixel_labels.to(dtype=torch.float32)
 
     def get_image_labels(self, im_file):
         """
@@ -188,7 +196,7 @@ class MergedCCPDataset(CCPDataset):
         image = transforms.ToTensor()(image)
         masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
 
-        return image, masks, attributes
+        return image, masks, attributes, has_pixel_labels
 
 class CelebAMaskHQDataset(Dataset):
     replay_attributes = ['Wearing_Hat', 'Eyeglasses', 'Blond_Hair']
