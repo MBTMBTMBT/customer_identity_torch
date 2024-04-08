@@ -51,7 +51,7 @@ def _scale_images_uniformly(images: torch.Tensor, scale_factor: float):
 
 
 
-def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch, device, mode=0):
+def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch, device, mode=0):
     model.train()
     running_loss = 0.0
     running_accuracy = 0.0
@@ -144,7 +144,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch,
     return train_loss, mask_train_loss, pred_train_loss
 
 
-def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
+def validate_CelebA(model, val_loader, criterion_mask, criterion_pred, epoch, device):
     model.eval()
     running_loss = 0.0
     running_accuracy = 0.0
@@ -201,7 +201,7 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
     return val_loss, mask_val_loss, pred_val_loss
 
 
-def test(model, test_loader, criterion_mask, criterion_pred, epoch, device):
+def test_CelebA(model, test_loader, criterion_mask, criterion_pred, epoch, device):
     model.eval()
     running_loss = 0.0
     running_accuracy = 0.0
