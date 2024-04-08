@@ -60,7 +60,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch,
     pred_running_loss = 0.0
     progress_bar = tqdm(train_loader, desc=f'Training Epoch {epoch}')
     for i, batch in enumerate(progress_bar):
-        inputs, mask_labels, attributes, _ = batch
+        inputs, mask_labels, attributes, = batch
 
         # img = inputs.clone().squeeze(0).permute(1, 2, 0).numpy().clip(0, 1)
         # # _img = _inputs.clone().squeeze(0).permute(1, 2, 0).numpy().clip(0, 1)
@@ -153,7 +153,7 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
     pred_running_loss = 0.0
     progress_bar = tqdm(val_loader, desc=f'Validation Epoch {epoch}')
     for i, batch in enumerate(progress_bar):
-        inputs, mask_labels, attributes, _ = batch
+        inputs, mask_labels, attributes, = batch
         attributes = attributes.to(device)
         # colour_labels = colour_labels.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
