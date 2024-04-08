@@ -266,6 +266,8 @@ def train_CCP(model, optimizer, train_loader, criterion_mask, criterion_pred, ep
 
         attributes = attributes.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
+        has_pixel_labels = has_pixel_labels.to(device)
+        has_pixel_labels = has_pixel_labels.view(-1, 1, 1, 1)
 
         # Select a uniform scale for the entire batch
         scale_factor = random.uniform(0.2, 1.5)
@@ -276,7 +278,7 @@ def train_CCP(model, optimizer, train_loader, criterion_mask, criterion_pred, ep
 
         pred_masks, pred_classes = model(inputs)
         # if there were no pixel labels from the dataset, do not compute there loss values
-        pred_masks, mask_labels = torch.dot(pred_masks, has_pixel_labels), torch.dot(mask_labels, has_pixel_labels)
+        pred_masks, mask_labels = torch.mul(pred_masks, has_pixel_labels), torch.mul(mask_labels, has_pixel_labels)
         mask_loss = criterion_mask(pred_masks, mask_labels)  # nn.BCELoss()
         # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
         pred_loss = criterion_pred(pred_classes, attributes)
@@ -343,6 +345,8 @@ def validate_CCP(model, val_loader, criterion_mask, criterion_pred, epoch, devic
         attributes = attributes.to(device)
         # colour_labels = colour_labels.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
+        has_pixel_labels = has_pixel_labels.to(device)
+        has_pixel_labels = has_pixel_labels.view(-1, 1, 1, 1)
 
         total = len(val_loader)
         scale_factor = i / total * 1.2 + 0.3
@@ -352,7 +356,7 @@ def validate_CCP(model, val_loader, criterion_mask, criterion_pred, epoch, devic
 
         pred_masks, pred_classes = model(inputs)
         # if there were no pixel labels from the dataset, do not compute there loss values
-        pred_masks, mask_labels = torch.dot(pred_masks, has_pixel_labels), torch.dot(mask_labels, has_pixel_labels)
+        pred_masks, mask_labels = torch.mul(pred_masks, has_pixel_labels), torch.mul(mask_labels, has_pixel_labels)
         mask_loss = criterion_mask(pred_masks, mask_labels)
         # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
         pred_loss = criterion_pred(pred_classes, attributes)
