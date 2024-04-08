@@ -23,7 +23,7 @@ class CCPDataset(Dataset):
     replay_attributes = []
 
     def __init__(self, root_dir, output_size=(512, 512),  # replay=10,
-                 categories_and_attributes: CategoriesAndAttributes = None):
+                 categories_and_attributes: CategoriesAndAttributes = None, pixel_only=False):
         self.categories_and_attributes = CelebAMaskHQCategoriesAndAttributes() if categories_and_attributes is None else categories_and_attributes
         self.output_size = output_size
         self.root_dir = root_dir
@@ -32,7 +32,7 @@ class CCPDataset(Dataset):
         self.label_dir = os.path.join(root_dir, "annotations/image-level")
         self.mask_path_list = glob.glob(os.path.join(self.mask_dir, '*.mat'))
         self.label_path_list = glob.glob(os.path.join(self.label_dir, '*.mat'))
-        self.merged_path_list = self.mask_path_list + self.label_path_list
+        self.merged_path_list = self.mask_path_list if pixel_only else self.mask_path_list + self.label_path_list
         # self.replay = replay
         self.original_length = len(self.merged_path_list)
 
@@ -108,7 +108,7 @@ class CCPDataset(Dataset):
                     labels[labels_str_list.index(label)] = 1
             has_pixel_labels = torch.tensor(False)
 
-        return image_tensor, labels, groundtruth_tensor, has_pixel_labels
+        return image_tensor, groundtruth_tensor, labels, has_pixel_labels
 
     def get_image_labels(self, im_file):
         """
@@ -155,6 +155,40 @@ class CCPDataset(Dataset):
         label_names = [str(label_list_data[int(label)][0]) for label in cur_labels if int(label) < len(label_list_data)]
         return label_names
 
+
+class MergedCCPDataset(CCPDataset):
+    def __init__(self, root_dir, output_size=(512, 512),  # replay=10,
+                 categories_and_attributes: CategoriesAndAttributes = None, pixel_only=False):
+        super(MergedCCPDataset, self).__init__(
+            root_dir, output_size, categories_and_attributes=categories_and_attributes, pixel_only=pixel_only,
+        )
+
+    def __getitem__(self, idx):
+        image, unmerged_masks, attributes, has_pixel_labels = super(MergedCCPDataset, self).__getitem__(idx)
+
+        # Convert Tensor images to PIL for operations
+        image = transforms.ToPILImage()(image)
+        unmerged_masks = [transforms.ToPILImage()(mask) for mask in unmerged_masks]
+
+        masks = []
+
+        for category in sorted(list(self.categories_and_attributes.merged_categories.keys())):
+            combined_mask_np = np.zeros_like(np.array(unmerged_masks[0]))  # Initialize with zeros
+            for sub_category in self.categories_and_attributes.merged_categories[category]:
+                sub_cat_idx = self.categories_and_attributes.mask_categories.index(sub_category)
+
+                mask_to_merge_np = np.array(unmerged_masks[sub_cat_idx])
+
+                # Use logical or operation to combine masks
+                combined_mask_np = np.logical_or(combined_mask_np, mask_to_merge_np).astype(np.uint8)
+
+            masks.append(Image.fromarray(combined_mask_np * 255, 'L'))  # Convert back to PIL and append
+
+        # Convert back to Tensor
+        image = transforms.ToTensor()(image)
+        masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
+
+        return image, masks, attributes
 
 class CelebAMaskHQDataset(Dataset):
     replay_attributes = ['Wearing_Hat', 'Eyeglasses', 'Blond_Hair']
@@ -471,10 +505,10 @@ class AugmentedDataset(Dataset):
         masks = [self._apply_common_transforms(mask, transform_params) for mask in masks]
 
         image = transforms.ToTensor()(image)
-        ori_image = transforms.ToTensor()(ori_image)
+        # ori_image = transforms.ToTensor()(ori_image)
         masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
 
-        return image, masks, attributes, ori_image
+        return image, masks, attributes,  # ori_image
 
     def __len__(self):
         return self.source.__len__()
