@@ -1,5 +1,8 @@
 import os
+import imageio.v2 as imageio
+import scipy
 from PIL import Image, ImageChops, ImageFilter, ImageEnhance, ImageOps
+from scipy.io import loadmat
 from torch.utils.data import Dataset
 from torchvision import transforms
 import torch
@@ -19,7 +22,7 @@ from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCateg
 class CCPDataset(Dataset):
     replay_attributes = []
 
-    def __init__(self, root_dir, output_size=(512, 512), replay=10,
+    def __init__(self, root_dir, output_size=(512, 512),  # replay=10,
                  categories_and_attributes: CategoriesAndAttributes = None):
         self.categories_and_attributes = CelebAMaskHQCategoriesAndAttributes() if categories_and_attributes is None else categories_and_attributes
         self.output_size = output_size
@@ -29,12 +32,135 @@ class CCPDataset(Dataset):
         self.label_dir = os.path.join(root_dir, "annotations/image-level")
         self.mask_path_list = glob.glob(os.path.join(self.mask_dir, '*.mat'))
         self.label_path_list = glob.glob(os.path.join(self.label_dir, '*.mat'))
-        self.replay = replay
+        self.merged_path_list = self.mask_path_list + self.label_path_list
+        # self.replay = replay
+        self.original_length = len(self.merged_path_list)
+
+    def __len__(self):
+        return self.original_length
+
+    # def __getitem__(self, idx) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    #     idx_path = self.merged_path_list[idx]
+    #     name = os.path.splitext(os.path.basename(idx_path))[0]
+    #     image = imageio.imread(f'photos/{name}.jpg')
+    #     labels = torch.zeros(len(self.categories_and_attributes.attributes))
+    #     labels_str_list = self.categories_and_attributes.attributes
+    #     # converte image into a torch tensor and resize it into output size (self.output_size)
+    #     # convert it into colour channel first
+    #     # make it 0~1
+    #     # init groundtruth an integer tensor of zeros same size to image (but has only one channel)
+    #     if idx_path in self.mask_dir:
+    #         annotation_mat = loadmat('annotations/pixel-level/' + name + '.mat')
+    #         groundtruth = annotation_mat['groundtruth']
+    #         # converte groundtruth into a torch tensor and resize it into output size
+    #         # call get_image_pixel_labels and assign 1s to labels based on its index in labels_str_list
+    #         pixel_labels = torch.tensor(True)
+    #     elif idx_path in self.label_dir:
+    #         # call get_image_labels and assign 1s to labels based on its index in labels_str_list
+    #         pixel_labels = torch.tensor(False)
+    #         pass
+
+    def __getitem__(self, idx) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        idx_path = self.merged_path_list[idx]
+        name = os.path.splitext(os.path.basename(idx_path))[0]
+        image = imageio.imread(f'photos/{name}.jpg')
+
+        # Image transformations: resize, convert color channel order, and normalize
+        transform = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize(self.output_size),
+            transforms.ToTensor(),  # Converts to [C, H, W] & scales to [0, 1]
+        ])
+        image_tensor = transform(image)
+
+        labels = torch.zeros(len(self.categories_and_attributes.attributes))
+        labels_str_list = self.categories_and_attributes.attributes
+
+        # Initialize groundtruth tensor
+        groundtruth_tensor = torch.zeros(1, *self.output_size,
+                                         dtype=torch.long)  # Assuming you want integer labels for segmentation
+
+        has_pixel_labels = torch.tensor(False)
+        if idx_path in self.mask_dir:
+            annotation_mat = loadmat(f'annotations/pixel-level/{name}.mat')
+            groundtruth = annotation_mat['groundtruth']
+
+            # Convert and resize groundtruth
+            groundtruth_transform = transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.Resize(self.output_size, interpolation=transforms.InterpolationMode.NEAREST),
+                transforms.ToTensor()
+            ])
+            groundtruth_tensor = groundtruth_transform(groundtruth.astype('uint8'))
+            groundtruth_tensor = groundtruth_tensor.long()  # Convert to long for indexing
+
+            # Update labels tensor based on pixel annotations
+            pixel_labels = self.get_image_pixel_labels(idx_path)  # Assuming this function returns a list of label names
+            for label in pixel_labels:
+                if label in labels_str_list:
+                    labels[labels_str_list.index(label)] = 1
+            has_pixel_labels = torch.tensor(True)
+
+        elif idx_path in self.label_dir:
+            image_labels = self.get_image_labels(idx_path)  # Assuming this function returns a list of label names
+            for label in image_labels:
+                if label in labels_str_list:
+                    labels[labels_str_list.index(label)] = 1
+            has_pixel_labels = torch.tensor(False)
+
+        return image_tensor, labels, groundtruth_tensor, has_pixel_labels
+
+    def get_image_labels(self, im_file):
+        """
+        Returns a list of labels contained in the given image file.
+        Parameters:
+        - im_file: String. The path to the image file's corresponding annotation file.
+        Returns:
+        - A list of label names that the image contains.
+        """
+        # Load the label list
+        label_list_data = scipy.io.loadmat(os.path.join(self.root_dir, 'label_list.mat'))['label_list'][0].tolist()
+        # Extract the image name from the given file path
+        name = os.path.splitext(os.path.basename(im_file))[0]
+        # Load the tags from the annotation file
+        try:
+            tags = scipy.io.loadmat(os.path.join(self.label_dir, f'{name}.mat'))['tags'][0]
+        except FileNotFoundError:
+            return f"Annotation file for {name} not found."
+        # Translate tags to label names
+        label_names = [str(label_list_data[tag][0]) for tag in tags]
+        return label_names
+
+    def get_image_pixel_labels(self, im_file):
+        """
+        Returns a list of labels contained in the given image file based on pixel-level annotations.
+        Parameters:
+        - im_file: String. The file name or path to the image's pixel-level annotation file.
+        Returns:
+        - A list of label names that the image contains based on pixel-level annotations.
+        """
+        # Load the label list
+        label_list_data = scipy.io.loadmat(os.path.join(self.root_dir, 'label_list.mat'))['label_list'][0].tolist()
+        # Extract the base name for the image file
+        name = os.path.splitext(os.path.basename(im_file))[0]
+        # Load the pixel-level annotation for the given image
+        try:
+            annotation_mat = scipy.io.loadmat(os.path.join(self.mask_dir, f'{name}.mat'))
+            groundtruth = annotation_mat['groundtruth']
+        except FileNotFoundError:
+            return f"Pixel-level annotation file for {name} not found."
+        # Get unique labels from the groundtruth
+        cur_labels = np.unique(groundtruth)
+        # Translate those labels into human-readable names
+        label_names = [str(label_list_data[int(label)][0]) for label in cur_labels if int(label) < len(label_list_data)]
+        return label_names
 
 
 class CelebAMaskHQDataset(Dataset):
     replay_attributes = ['Wearing_Hat', 'Eyeglasses', 'Blond_Hair']
-    def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes:CategoriesAndAttributes=None):
+
+    def __init__(self, root_dir, output_size=(512, 512), replay=10,
+                 categories_and_attributes: CategoriesAndAttributes = None):
         self.categories_and_attributes = CelebAMaskHQCategoriesAndAttributes() if categories_and_attributes is None else categories_and_attributes
         self.output_size = output_size
         self.root_dir = root_dir
@@ -58,7 +184,7 @@ class CelebAMaskHQDataset(Dataset):
                         self.mask_dict[img_idx] = {}
                     full_path = os.path.join(folder_path, mask_file)
                     self.mask_dict[img_idx][category] = full_path
-        
+
         # Load attribute data
         self.attribute_file = os.path.join(root_dir, "CelebAMask-HQ-attribute-anno.txt")
         with open(self.attribute_file, 'r') as file:
@@ -68,7 +194,7 @@ class CelebAMaskHQDataset(Dataset):
             for line in lines[2:]:
                 parts = line.strip().split()
                 filename = parts[0]
-                attrs = {self.attributes[i]: int(parts[i+1]) for i in range(len(self.attributes))}
+                attrs = {self.attributes[i]: int(parts[i + 1]) for i in range(len(self.attributes))}
                 self.attribute_data[filename] = attrs
 
         # replay data:
@@ -139,26 +265,29 @@ class CelebAMaskHQDataset(Dataset):
 
     def __len__(self):
         return len(self.image_list)
-    
+
     def has_attribute(self, filename, attribute):
         """Check if the specified image has the specified attribute"""
         if filename in self.attribute_data and attribute in self.attribute_data[filename]:
             return self.attribute_data[filename][attribute] == 1
         return False
-    
+
 
 class SelectedCelebAMaskHQDataset(CelebAMaskHQDataset):
-    selected_categories = ['cloth', 'hair', 'hat', 'eye_g', 'skin',]
-    indices = [0, 2, 9, 10, 8,]
+    selected_categories = ['cloth', 'hair', 'hat', 'eye_g', 'skin', ]
+    indices = [0, 2, 9, 10, 8, ]
+
     def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes=None):
-        super(SelectedCelebAMaskHQDataset, self).__init__(root_dir, output_size, replay=replay, categories_and_attributes=categories_and_attributes)
-        self.selected_indices = [self.categories_and_attributes.mask_categories.index(cat) for cat in self.selected_categories]
+        super(SelectedCelebAMaskHQDataset, self).__init__(root_dir, output_size, replay=replay,
+                                                          categories_and_attributes=categories_and_attributes)
+        self.selected_indices = [self.categories_and_attributes.mask_categories.index(cat) for cat in
+                                 self.selected_categories]
 
     def __getitem__(self, idx):
         image, masks_all, attributes = super(SelectedCelebAMaskHQDataset, self).__getitem__(idx)
         masks_selected = masks_all[self.selected_indices]
         return image, masks_selected, attributes
-    
+
 
 class MergedCelebAMaskHQDataset(CelebAMaskHQDataset):  # 'brow', 'eye', 'mouth', 'nose', ]
     def __init__(self, root_dir, output_size=(512, 512), replay=10, categories_and_attributes=None):
@@ -209,10 +338,11 @@ class MergedCelebAMaskHQDataset(CelebAMaskHQDataset):  # 'brow', 'eye', 'mouth',
 
 
 class AugmentedDataset(Dataset):
-    def __init__(self, dataset_source: Dataset, flip_prob=0.5, crop_ratio=(0.8, 0.8), scale_factor=(0.5, 2), output_size=(512, 512),
-                 noise_level=(0, 10), blur_radius=(0, 2), brightness_factor=(0.75, 1.25), pil=False, seed:int=None):
+    def __init__(self, dataset_source: Dataset, flip_prob=0.5, crop_ratio=(0.8, 0.8), scale_factor=(0.5, 2),
+                 output_size=(512, 512),
+                 noise_level=(0, 10), blur_radius=(0, 2), brightness_factor=(0.75, 1.25), pil=False, seed: int = None):
         self.source = dataset_source
-        
+
         np.random.seed(seed)
 
         self.flip_prob = flip_prob
@@ -234,7 +364,7 @@ class AugmentedDataset(Dataset):
             "do_flip": np.random.rand() < self.flip_prob,
             "crop_width_ratio": new_crop_width_ratio,
             "crop_height_ratio": new_crop_height_ratio,
-            "crop_left_ratio": new_crop_left_ratio,  
+            "crop_left_ratio": new_crop_left_ratio,
             "crop_top_ratio": new_crop_top_ratio,
             # "noise_level": np.random.uniform(self.noise_level[0], self.noise_level[1]),
             # "blur_value": np.random.uniform(self.blur_radius[0], self.blur_radius[1]),
@@ -280,7 +410,7 @@ class AugmentedDataset(Dataset):
         # Calculate random color for padding if necessary
         random_color = self._get_random_colour(image)
 
-         # Apply scale
+        # Apply scale
         scale_factor = params["scale_factor"]
         scaled_size = (int(self.output_size[0] * scale_factor), int(self.output_size[1] * scale_factor))
         image = image.resize(scaled_size, resample=Image.BILINEAR)
@@ -345,10 +475,10 @@ class AugmentedDataset(Dataset):
         masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
 
         return image, masks, attributes, ori_image
-    
+
     def __len__(self):
         return self.source.__len__()
-    
+
     def _get_random_colour(self, image):
         mode = image.mode
         if mode == 'RGB':
@@ -369,75 +499,76 @@ def show_image(image, title=""):
 
 def show_masks(masks, categories, mask_indices):
     """Display selected masks on a single figure"""
-    
+
     num_masks = len(mask_indices)
     cols = 5
-    rows = num_masks // cols 
+    rows = num_masks // cols
     rows += num_masks % cols
     if rows == 0:
         rows = 1
     position = range(1, num_masks + 1)
 
     fig = plt.figure(figsize=(10, 10))  # adjust the size as needed
-    
+
     for i, idx in enumerate(mask_indices):
         mask_image = masks[i].numpy()
         ax = fig.add_subplot(rows, cols, position[i])
         ax.imshow(mask_image, cmap="gray")
         ax.set_title(categories[i])
         ax.axis('off')
-    
+
     plt.tight_layout()
 
 
 class ATRDataset(Dataset):
     data_map = {
-        'background':     0,
-        'hat':            1,
-        'hair':           2,
-        'sunglass':       3,
-        'upper-clothes':  4,
-        'skirt':          5,
-        'pants':          6,
-        'dress':          7,
-        'belt':           8,
-        'left-shoe':      9,
-        'right-shoe':    10,
-        'face':          11,
-        'left-leg':      12,
-        'right-leg':     13,
-        'left-arm':      14,
-        'right-arm':     15,
-        'bag':           16,
-        'scarf':         17,
+        'background': 0,
+        'hat': 1,
+        'hair': 2,
+        'sunglass': 3,
+        'upper-clothes': 4,
+        'skirt': 5,
+        'pants': 6,
+        'dress': 7,
+        'belt': 8,
+        'left-shoe': 9,
+        'right-shoe': 10,
+        'face': 11,
+        'left-leg': 12,
+        'right-leg': 13,
+        'left-arm': 14,
+        'right-arm': 15,
+        'bag': 16,
+        'scarf': 17,
     }
+
 
 class LIPDataset(Dataset):
     data_map = {
-        'hat':           1,
-        'hair':          2,
-        'glove':         3,
-        'sunglasses':    4,
-        'upperclothes':  5,
-        'dress':         6,
-        'coat':          7,
-        'socks':         8,
-        'pants':         9,
-        'jumpsuits':    10,
-        'scarf':        11,
-        'skirt':        12,
-        'face':         13,
-        'left-arm':     14,
-        'right-arm':    15,
-        'left-leg':     16,
-        'right-leg':    17,
-        'left-shoe':    18,
-        'right-shoe':   19,
+        'hat': 1,
+        'hair': 2,
+        'glove': 3,
+        'sunglasses': 4,
+        'upperclothes': 5,
+        'dress': 6,
+        'coat': 7,
+        'socks': 8,
+        'pants': 9,
+        'jumpsuits': 10,
+        'scarf': 11,
+        'skirt': 12,
+        'face': 13,
+        'left-arm': 14,
+        'right-arm': 15,
+        'left-leg': 16,
+        'right-leg': 17,
+        'left-shoe': 18,
+        'right-shoe': 19,
     }
     class_ids = [5, 6, 7, 10, 2, 1, 4, 13]
     class_ids = [2, 1, 4, 13]
     # categories = ['cloth', 'hair', 'hat', 'eye_g', 'skin',]
-    categories = ['hair', 'hat', 'eye_g', 'skin',]
+    categories = ['hair', 'hat', 'eye_g', 'skin', ]
 
     def __init__(self, root_dir, mode='merge'):
         self.root_dir = root_dir
@@ -485,7 +616,8 @@ class LIPDataset(Dataset):
         # l = self._generate_class_masks(np.array(Image.open(mask_path)).astype(np.uint8), self.class_ids)
         image = transforms.ToTensor()(np.array(Image.open(image_path).convert('RGB')))
         # masks = torch.Tensor(self._generate_class_masks(np.array(Image.open(mask_path)).astype(np.uint8), self.class_ids, [(5,6,7,10)]))
-        masks = torch.Tensor(self._generate_class_masks(np.array(Image.open(mask_path)).astype(np.uint8), self.class_ids, []))
+        masks = torch.Tensor(
+            self._generate_class_masks(np.array(Image.open(mask_path)).astype(np.uint8), self.class_ids, []))
 
         return image, masks
 
@@ -511,7 +643,7 @@ class LIPDataset(Dataset):
             if class_id not in merged_class_ids:
                 masks.append((mask_array == class_id).astype(np.uint8))
         masks = np.stack(masks, axis=0)
-        
+
         return masks
 
 
@@ -554,7 +686,8 @@ if __name__ == "__main__":
 
         # Show some masks
         # Change these indices to see different masks
-        show_masks(masks, sorted(list(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())), range(len(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())))
+        show_masks(masks, sorted(list(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())),
+                   range(len(celebAMaskHQCategoriesAndAttributes.merged_categories.keys())))
 
         plt.show()
 
@@ -588,9 +721,9 @@ if __name__ == "__main__":
     #     # Change these indices to see different masks
     #     mask_indices = range(12)
     #     show_masks(masks, SelectedCelebAMaskHQDataset.selected_categories, SelectedCelebAMaskHQDataset.indices)
-        
+
     #     plt.show()
 
-        # # Let's say we want to show only 5 images for demonstration purposes
-        # if batch_idx == 4:
-        #     break
+    # # Let's say we want to show only 5 images for demonstration purposes
+    # if batch_idx == 4:
+    #     break
