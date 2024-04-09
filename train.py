@@ -352,7 +352,7 @@ def validate_CCP(model, val_loader, criterion_mask, criterion_pred, epoch, devic
         has_pixel_labels = has_pixel_labels.view(-1, 1, 1, 1)
 
         total = len(val_loader)
-        scale_factor = i / total * 1.2 + 0.3
+        scale_factor = 1  # i / total * 1.2 + 0.3
         # scale_factor = random.uniform(0.2, 1)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
                                                                                                      scale_factor)
