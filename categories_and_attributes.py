@@ -64,12 +64,12 @@ class CelebAMaskHQCategoriesAndAttributes(CategoriesAndAttributes):
 
 class CCPCategoriesAndAttributes(CategoriesAndAttributes):
     mask_categories = [
-        'jacket', 'pumps', 'bracelet', 'flats', 'wedges', 'tie', 'heels', 'purse', 'skin', 'clogs', 'bodysuit',
-        'shirt', 'null', 'sweater', 'tights', 'skirt', 'bra', 'hat', 'shoes', 'pants', 'wallet', 'cardigan', 'vest',
-        'glasses', 'sunglasses', 'accessories', 'jumper', 'sneakers', 'bag', 'belt', 'earrings', 'scarf', 'coat',
-        'shorts', 'dress', 'watch', 'sweatshirt', 'boots', 'blouse', 'stockings', 'loafers', 'necklace', 'gloves',
-        'suit', 'hoodie', 'romper', 'ring', 'jeans', 't-shirt', 'sandals', 'blazer', 'cape', 'top', 'socks', 'hair',
-        'leggings',
+        'null', 'accessories', 'bag', 'belt', 'blazer', 'blouse', 'bodysuit', 'boots', 'bra', 'bracelet', 'cape',
+        'cardigan', 'clogs', 'coat', 'dress', 'earrings', 'flats', 'glasses', 'gloves', 'hair', 'hat', 'heels',
+        'hoodie', 'intimate', 'jacket', 'jeans', 'jumper', 'leggings', 'loafers', 'necklace', 'panties', 'pants',
+        'pumps', 'purse', 'ring', 'romper', 'sandals', 'scarf', 'shirt', 'shoes', 'shorts', 'skin', 'skirt', 'sneakers',
+        'socks', 'stockings', 'suit', 'sunglasses', 'sweater', 'sweatshirt', 'swimwear', 't-shirt', 'tie', 'tights',
+        'top', 'vest', 'wallet', 'watch', 'wedges',
     ]
     merged_categories = {
         'legwear': ['leggings', 'tights', 'stockings', ],
