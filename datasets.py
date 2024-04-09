@@ -146,49 +146,50 @@ class CCPDataset(Dataset):
         one_hot_groundtruth = torch.zeros((num_classes, H, W), dtype=torch.float32)
         one_hot_groundtruth.scatter_(0, groundtruth_tensor.unsqueeze(0), 1)
 
-        # Visualization part
-        fig, axs = plt.subplots(1, 3, figsize=(18, 6))  # Adjust the size as needed
-
-        # Plot original image
-        axs[0].imshow(image)
-        axs[0].set_title('Original Image')
-        axs[0].axis('off')
-
-        # Highlight the cropped area in the original image
-        rect = patches.Rectangle((x_offset, y_offset), crop_width, crop_height, linewidth=1, edgecolor='r',
-                                 facecolor='none')
-        axs[0].add_patch(rect)
-
-        # Plot cropped and resized image
-        axs[1].imshow(transforms.ToPILImage()(image_tensor))
-        axs[1].set_title('Cropped & Resized Image')
-        axs[1].axis('off')
-
-        # Check and plot ground truth if available
-        if has_pixel_labels == torch.tensor(1):
-            # Assuming groundtruth_tensor is already in one-hot and resized to self.output_size
-            # Convert one-hot back to class indices for visualization
-            groundtruth_indices = torch.argmax(one_hot_groundtruth, dim=0)
-            axs[2].imshow(groundtruth_indices, cmap='jet')
-            axs[2].set_title('Ground Truth Annotation')
-            axs[2].axis('off')
-        else:
-            # axs[2].set_visible(False)
-
-            axs[2].text(0.5, 0.5, 'No pixel-level labels', horizontalalignment='center', verticalalignment='center',
-                        transform=axs[2].transAxes)
-            axs[2].axis('off')
-
-        # Add texture labels based on 'labels' tensor
-        present_labels = [labels_str_list[i] for i, label in enumerate(labels) if label == 1]
-        texture_labels_text = "Texture Labels: " + ", ".join(present_labels)
-        # fig.suptitle(texture_labels_text, fontsize=14)
-        # Adjusting the text to appear like a subtitle below the image in axs[1]
-        axs[1].text(0.5, -0.5, texture_labels_text, ha='center', va='top', transform=axs[1].transAxes, fontsize=14)
-
-        # axs[1].suptitle(texture_labels_text, fontsize=14)
-
-        plt.show()
+        # # debug:::::
+        # # Visualization part
+        # fig, axs = plt.subplots(1, 3, figsize=(18, 6))  # Adjust the size as needed
+        #
+        # # Plot original image
+        # axs[0].imshow(image)
+        # axs[0].set_title('Original Image')
+        # axs[0].axis('off')
+        #
+        # # Highlight the cropped area in the original image
+        # rect = patches.Rectangle((x_offset, y_offset), crop_width, crop_height, linewidth=1, edgecolor='r',
+        #                          facecolor='none')
+        # axs[0].add_patch(rect)
+        #
+        # # Plot cropped and resized image
+        # axs[1].imshow(transforms.ToPILImage()(image_tensor))
+        # axs[1].set_title('Cropped & Resized Image')
+        # axs[1].axis('off')
+        #
+        # # Check and plot ground truth if available
+        # if has_pixel_labels == torch.tensor(1):
+        #     # Assuming groundtruth_tensor is already in one-hot and resized to self.output_size
+        #     # Convert one-hot back to class indices for visualization
+        #     groundtruth_indices = torch.argmax(one_hot_groundtruth, dim=0)
+        #     axs[2].imshow(groundtruth_indices, cmap='jet')
+        #     axs[2].set_title('Ground Truth Annotation')
+        #     axs[2].axis('off')
+        # else:
+        #     # axs[2].set_visible(False)
+        #
+        #     axs[2].text(0.5, 0.5, 'No pixel-level labels', horizontalalignment='center', verticalalignment='center',
+        #                 transform=axs[2].transAxes)
+        #     axs[2].axis('off')
+        #
+        # # Add texture labels based on 'labels' tensor
+        # present_labels = [labels_str_list[i] for i, label in enumerate(labels) if label == 1]
+        # texture_labels_text = "Texture Labels: " + ", ".join(present_labels)
+        # # fig.suptitle(texture_labels_text, fontsize=14)
+        # # Adjusting the text to appear like a subtitle below the image in axs[1]
+        # axs[1].text(0.5, -0.5, texture_labels_text, ha='center', va='top', transform=axs[1].transAxes, fontsize=14)
+        #
+        # # axs[1].suptitle(texture_labels_text, fontsize=14)
+        #
+        # plt.show()
 
         return image_tensor.to(dtype=torch.float32), one_hot_groundtruth.to(dtype=torch.float32), labels.to(dtype=torch.float32), has_pixel_labels.to(dtype=torch.float32)
 
