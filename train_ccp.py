@@ -12,7 +12,8 @@ if __name__ == "__main__":
     seed = 0  # random.randint(0, 1024)
     torch.manual_seed(seed)
 
-    image_size = (256, 256)
+    image_size = (300, 200)
+    image_scale_range = (0.5, 1.5)
     # datasets
     full_dataset = MergedCCPDataset(root_dir=r"/home/bentengma/work_space/clothing-co-parsing-master", categories_and_attributes=CCPCategoriesAndAttributes, output_size=image_size)
     train_size = int(0.95 * len(full_dataset))
@@ -41,8 +42,8 @@ if __name__ == "__main__":
     )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=24)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=24)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0)
     # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=24)
 
     # model
@@ -99,7 +100,7 @@ if __name__ == "__main__":
 
         # train, validate, test
         train_loss, mask_train_loss, pred_train_loss = train_CCP(model, optimizer, train_loader, criterion_mask,
-                                                             criterion_pred, epoch, device, mode=mode)
+                                                             criterion_pred, image_scale_range, epoch, device, mode=mode)
         val_loss, mask_val_loss, pred_val_loss = validate_CCP(model, val_loader, criterion_mask, criterion_pred, epoch,
                                                           device)
         # test_loss, mask_test_loss, pred_test_loss = test_CelebA(model, test_loader, criterion_mask, criterion_pred, epoch,

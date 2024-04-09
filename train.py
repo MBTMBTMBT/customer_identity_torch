@@ -50,8 +50,7 @@ def _scale_images_uniformly(images: torch.Tensor, scale_factor: float):
     return scaled_images
 
 
-
-def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch, device, mode=0):
+def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode=0):
     model.train()
     running_loss = 0.0
     running_accuracy = 0.0
@@ -86,17 +85,18 @@ def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred,
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
         # Select a uniform scale for the entire batch
-        scale_factor = random.uniform(0.2, 1.5)
-        inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels, scale_factor)
+        scale_factor = random.uniform(*scale_range)
+        inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+                                                                                                     scale_factor)
 
         optimizer.zero_grad()
-        
+
         pred_masks, pred_classes = model(inputs)
         mask_loss = criterion_mask(pred_masks, mask_labels)
         # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
         pred_loss = criterion_pred(pred_classes, attributes)
         loss = mask_loss + pred_loss
-        
+
         # Assume `predictions` and `classes` are your model's predictions and true class labels respectively
         predictions = pred_classes > 0.5
         # Create a mask for where the true class labels are 1 (positive class)
@@ -134,9 +134,10 @@ def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred,
         pred_running_loss += pred_loss.item()
         # cl_running_loss += cl_loss.item()
         # rg_running_loss += rg_loss.item()
-        
+
         running_accuracy += accuracy
-        progress_bar.set_description(f'Train E{epoch}: ML:{mask_running_loss/(i+1):.3f} PL:{pred_running_loss/(i+1):.3f} Acc:{running_accuracy/(i+1):.2f}')
+        progress_bar.set_description(
+            f'Train E{epoch}: ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
 
     train_loss = running_loss / len(train_loader)
     mask_train_loss = mask_running_loss / len(train_loader)
@@ -193,7 +194,8 @@ def validate_CelebA(model, val_loader, criterion_mask, criterion_pred, epoch, de
         # cl_running_loss += cl_loss.item()
         # rg_running_loss += rg_loss.item()
         running_accuracy += accuracy
-        progress_bar.set_description(f'Val E{epoch}:  ML:{mask_running_loss/(i+1):.3f} PL:{pred_running_loss/(i+1):.3f} Acc:{running_accuracy/(i+1):.2f}')
+        progress_bar.set_description(
+            f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
@@ -244,7 +246,8 @@ def test_CelebA(model, test_loader, criterion_mask, criterion_pred, epoch, devic
         # cl_running_loss += cl_loss.item()
         # rg_running_loss += rg_loss.item()
         running_accuracy += accuracy
-        progress_bar.set_description(f'Test E{epoch}: ML:{mask_running_loss/(i+1):.3f} PL:{pred_running_loss/(i+1):.3f} Acc:{running_accuracy/(i+1):.2f}')
+        progress_bar.set_description(
+            f'Test E{epoch}: ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
 
     test_loss = running_loss / len(test_loader)
     mask_test_loss = mask_running_loss / len(test_loader)
@@ -254,7 +257,7 @@ def test_CelebA(model, test_loader, criterion_mask, criterion_pred, epoch, devic
     return test_loss, mask_test_loss, pred_test_loss  # , rg_test_loss
 
 
-def train_CCP(model, optimizer, train_loader, criterion_mask, criterion_pred, epoch, device, mode=0):
+def train_CCP(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode=0):
     model.train()
     running_accuracy = 0.0
     running_loss = 0.0
@@ -270,7 +273,7 @@ def train_CCP(model, optimizer, train_loader, criterion_mask, criterion_pred, ep
         has_pixel_labels = has_pixel_labels.view(-1, 1, 1, 1)
 
         # Select a uniform scale for the entire batch
-        scale_factor = random.uniform(0.2, 1.5)
+        scale_factor = random.uniform(*scale_range)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
                                                                                                      scale_factor)
 
@@ -385,7 +388,8 @@ def validate_CCP(model, val_loader, criterion_mask, criterion_pred, epoch, devic
         # cl_running_loss += cl_loss.item()
         # rg_running_loss += rg_loss.item()
         running_accuracy += accuracy
-        progress_bar.set_description(f'Val E{epoch}:  ML:{mask_running_loss/(i+1):.3f} PL:{pred_running_loss/(i+1):.3f} Acc:{running_accuracy/(i+1):.2f}')
+        progress_bar.set_description(
+            f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
