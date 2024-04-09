@@ -1,4 +1,6 @@
 import os
+import random
+
 import imageio.v2 as imageio
 import scipy
 from PIL import Image, ImageChops, ImageFilter, ImageEnhance, ImageOps
@@ -8,6 +10,7 @@ from torchvision import transforms
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import re
 import glob
 from image_with_masks_and_attributes import ImageWithMasksAndAttributes
@@ -65,13 +68,34 @@ class CCPDataset(Dataset):
         name = os.path.splitext(os.path.basename(idx_path))[0]
         image = imageio.imread(os.path.join(self.image_dir, f'{name}.jpg'))
 
+        # Calculate the aspect ratio of the output size
+        output_aspect_ratio = self.output_size[1] / self.output_size[0]
+
+        # Determine the maximum crop size of the original image that maintains this aspect ratio
+        orig_aspect_ratio = image.shape[1] / image.shape[0]
+        if orig_aspect_ratio > output_aspect_ratio:
+            # Width is too wide for the target aspect ratio
+            crop_height = image.shape[0]
+            crop_width = int(crop_height * output_aspect_ratio)
+        else:
+            # Height is too high for the target aspect ratio
+            crop_width = image.shape[1]
+            crop_height = int(crop_width / output_aspect_ratio)
+
+        # Randomly choose an offset for the crop (i.e., top-left corner of the crop)
+        x_offset = random.randint(0, image.shape[1] - crop_width)
+        y_offset = random.randint(0, image.shape[0] - crop_height)
+
+        # Apply crop to the original image
+        cropped_image = image[y_offset:y_offset + crop_height, x_offset:x_offset + crop_width]
+
         # Image transformations: resize, convert color channel order, and normalize
         transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize(self.output_size),
             transforms.ToTensor(),  # Converts to [C, H, W] & scales to [0, 1]
         ])
-        image_tensor = transform(image)
+        image_tensor = transform(cropped_image)
 
         labels = torch.zeros(len(self.categories_and_attributes.attributes))
         labels_str_list = self.categories_and_attributes.attributes
@@ -85,14 +109,20 @@ class CCPDataset(Dataset):
             annotation_mat = loadmat(os.path.join(self.mask_dir, f'{name}.mat'))
             groundtruth = annotation_mat['groundtruth']
 
-            # Convert and resize groundtruth
-            groundtruth_transform = transforms.Compose([
-                transforms.ToPILImage(),
-                transforms.Resize(self.output_size, interpolation=transforms.InterpolationMode.NEAREST),
-                transforms.ToTensor()
-            ])
-            groundtruth_tensor = groundtruth_transform(groundtruth.astype('uint8'))
-            groundtruth_tensor = groundtruth_tensor.long()  # Convert to long for indexing
+            cropped_groundtruth = groundtruth[y_offset:y_offset + crop_height, x_offset:x_offset + crop_width]
+
+            # Convert the numpy array to a PIL Image for resizing
+            cropped_groundtruth_image = Image.fromarray(cropped_groundtruth.astype('uint8'))
+
+            # Resize using NEAREST to avoid changing class labels unintentionally
+            resized_groundtruth_image = cropped_groundtruth_image.resize((self.output_size[1], self.output_size[0]), resample=Image.NEAREST)
+
+            # Convert the PIL Image back to a numpy array
+            resized_groundtruth_array = np.array(resized_groundtruth_image)
+
+            # Finally, convert the numpy array to a PyTorch tensor
+            groundtruth_tensor = torch.from_numpy(
+                resized_groundtruth_array).long()  # Ensure it's a long tensor for indexing
 
             # Update labels tensor based on pixel annotations
             pixel_labels = self.get_image_pixel_labels(idx_path)  # Assuming this function returns a list of label names
@@ -115,6 +145,50 @@ class CCPDataset(Dataset):
         H, W = groundtruth_tensor.shape
         one_hot_groundtruth = torch.zeros((num_classes, H, W), dtype=torch.float32)
         one_hot_groundtruth.scatter_(0, groundtruth_tensor.unsqueeze(0), 1)
+
+        # Visualization part
+        fig, axs = plt.subplots(1, 3, figsize=(18, 6))  # Adjust the size as needed
+
+        # Plot original image
+        axs[0].imshow(image)
+        axs[0].set_title('Original Image')
+        axs[0].axis('off')
+
+        # Highlight the cropped area in the original image
+        rect = patches.Rectangle((x_offset, y_offset), crop_width, crop_height, linewidth=1, edgecolor='r',
+                                 facecolor='none')
+        axs[0].add_patch(rect)
+
+        # Plot cropped and resized image
+        axs[1].imshow(transforms.ToPILImage()(image_tensor))
+        axs[1].set_title('Cropped & Resized Image')
+        axs[1].axis('off')
+
+        # Check and plot ground truth if available
+        if has_pixel_labels == torch.tensor(1):
+            # Assuming groundtruth_tensor is already in one-hot and resized to self.output_size
+            # Convert one-hot back to class indices for visualization
+            groundtruth_indices = torch.argmax(one_hot_groundtruth, dim=0)
+            axs[2].imshow(groundtruth_indices, cmap='jet')
+            axs[2].set_title('Ground Truth Annotation')
+            axs[2].axis('off')
+        else:
+            # axs[2].set_visible(False)
+
+            axs[2].text(0.5, 0.5, 'No pixel-level labels', horizontalalignment='center', verticalalignment='center',
+                        transform=axs[2].transAxes)
+            axs[2].axis('off')
+
+        # Add texture labels based on 'labels' tensor
+        present_labels = [labels_str_list[i] for i, label in enumerate(labels) if label == 1]
+        texture_labels_text = "Texture Labels: " + ", ".join(present_labels)
+        # fig.suptitle(texture_labels_text, fontsize=14)
+        # Adjusting the text to appear like a subtitle below the image in axs[1]
+        axs[1].text(0.5, -0.5, texture_labels_text, ha='center', va='top', transform=axs[1].transAxes, fontsize=14)
+
+        # axs[1].suptitle(texture_labels_text, fontsize=14)
+
+        plt.show()
 
         return image_tensor.to(dtype=torch.float32), one_hot_groundtruth.to(dtype=torch.float32), labels.to(dtype=torch.float32), has_pixel_labels.to(dtype=torch.float32)
 
