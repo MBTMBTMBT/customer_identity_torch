@@ -1,25 +1,184 @@
 import os
 import random
-
 import imageio.v2 as imageio
 import scipy
-from PIL import Image, ImageChops, ImageFilter, ImageEnhance, ImageOps
+from PIL import Image, ImageChops, ImageFilter, ImageEnhance, ImageOps, ImageDraw
 from scipy.io import loadmat
 from torch.utils.data import Dataset
 from torchvision import transforms
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import re
 import glob
 from image_with_masks_and_attributes import ImageWithMasksAndAttributes
 from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCategoriesAndAttributes
+import json
+import matplotlib.patches as patches
+from torchvision.transforms import functional as TF
 
 
 # class CategoryType(enum.Enum):
 #     selective = 0
 #     logical = 1
+
+
+class Deepfashion2Dataset(Dataset):
+    categories = [
+        'short sleeve top', 'long sleeve top', 'short sleeve outwear',
+        'long sleeve outwear', 'vest', 'sling', 'shorts',
+        'trousers', 'skirt', 'short sleeve dress', 
+        'long sleeve dress', 'vest dress', 'sling dress'
+    ]
+    def __init__(self, image_dir, anno_dir, output_size=(400, 300)):
+        self.output_size = output_size  # H, W
+        self.image_dir = image_dir
+        self.anno_dir = anno_dir
+        self.image_filenames = [x for x in os.listdir(image_dir) if x.endswith('.jpg')]
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),  # Converts to Torch tensor and scales to [0, 1]
+        ])
+
+    def __len__(self):
+        return len(self.image_filenames)
+
+    def __getitem__(self, idx):
+        # Load and transform image
+        img_name = self.image_filenames[idx]
+        img_path = os.path.join(self.image_dir, img_name)
+        image = Image.open(img_path).convert('RGB')
+        
+        # Determine the crop size based on the aspect ratio of output_size
+        crop_width, crop_height = self.get_max_crop(image.size, self.output_size)
+        
+        # Crop the image
+        image = TF.center_crop(image, (crop_height, crop_width))
+        
+        # Resize image to output size
+        image = TF.resize(image, self.output_size)
+        image_tensor = self.transform(image)
+        
+        # Initialize mask array
+        masks = torch.zeros((len(self.categories), *self.output_size), dtype=torch.float32)
+        labels = torch.zeros(len(self.categories), dtype=torch.float32)
+
+        # Load annotation
+        anno_path = os.path.join(self.anno_dir, img_name.replace('.jpg', '.json'))
+        with open(anno_path, 'r', encoding='utf-8') as file:
+            anno_data = json.load(file)
+        
+        # Create masks and determine labels
+        for item_key, item_value in anno_data.items():
+            if item_key.startswith('item'):
+                category_id = item_value.get('category_id', 0) - 1
+                if 0 <= category_id < len(self.categories):
+                    for segment in item_value.get('segmentation', []):
+                        mask = Image.new('L', image.size, 0)
+                        draw = ImageDraw.Draw(mask)
+                        draw.polygon(segment, outline=1, fill=1)
+                        mask = TF.center_crop(mask, (crop_height, crop_width))
+                        mask = TF.resize(mask, self.output_size)
+                        mask_tensor = self.transform(mask).squeeze(0)  # Convert to tensor and remove channel dim
+                        masks[category_id] = torch.max(masks[category_id], mask_tensor)  # Use torch.max to combine masks
+        
+        # Update labels based on mask presence after cropping
+        labels = (torch.sum(masks.reshape(len(self.categories), -1), dim=1) > 0).float()
+
+        return image_tensor, masks, labels
+    
+    @staticmethod
+    def get_max_crop(current_size, target_ratio):
+        current_ratio = current_size[0] / current_size[1]
+        target_ratio = target_ratio[0] / target_ratio[1]
+        if current_ratio > target_ratio:
+            # Crop width to fit target ratio
+            return int(current_size[1] * target_ratio), current_size[1]
+        else:
+            # Crop height to fit target ratio
+            return current_size[0], int(current_size[0] / target_ratio)
+
+
+def show_deepfashion2_image_masks_and_labels(dataset, index):
+    # Get the data from the dataset
+    image, masks, labels = dataset[index]
+
+    # Convert the image tensor to PIL Image for display
+    image_pil = transforms.ToPILImage()(image)
+
+    # Set up the plot
+    num_subplots = len(dataset.categories) + 1
+    fig, axs = plt.subplots(1, num_subplots, figsize=(20, 3))
+    
+    # Plot the original image
+    axs[0].imshow(image_pil)
+    axs[0].set_title('Original Image')
+    axs[0].axis('off')
+
+    # Plot each mask
+    for i, mask in enumerate(masks):
+        axs[i + 1].imshow(mask, cmap='gray', interpolation='none')
+        axs[i + 1].set_title(f'{dataset.categories[i]}: {"1" if labels[i] == 1.0 else "0"}')
+        axs[i + 1].axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def display_deepfashion_image_with_annotations(image_folder, anno_folder):
+    for filename in os.listdir(anno_folder):
+        if filename.endswith('.json'):
+            json_path = os.path.join(anno_folder, filename)
+            image_path = os.path.join(image_folder, filename.replace('.json', '.jpg'))
+            
+            try:
+                # Load JSON data
+                with open(json_path, 'r', encoding='utf-8') as file:
+                    data = json.load(file)
+
+                # Open the corresponding image
+                image = Image.open(image_path)
+                fig, ax = plt.subplots()
+                ax.imshow(image)
+
+                # Prepare label text from JSON data and draw annotations
+                labels = []
+                for item_key in data:
+                    if item_key.startswith('item'):
+                        item = data[item_key]
+                        category_name = item.get('category_name', 'Unknown')
+                        category_id = item.get('category_id', 'Unknown')
+                        style = item.get('style', 'Unknown')
+                        labels.append(f"Category Name: {category_name}, Category ID: {category_id}, Style: {style}")
+
+                        # Draw bounding box
+                        bbox = item.get('bounding_box', [])
+                        if bbox:
+                            rect = patches.Rectangle((bbox[0], bbox[1]), bbox[2]-bbox[0], bbox[3]-bbox[1], linewidth=1, edgecolor='r', facecolor='none')
+                            ax.add_patch(rect)
+
+                        # Draw segmentation polygons
+                        segments = item.get('segmentation', [])
+                        for poly in segments:
+                            poly_points = [(poly[i], poly[i+1]) for i in range(0, len(poly), 2)]
+                            polygon = patches.Polygon(poly_points, linewidth=1, edgecolor='g', facecolor='none')
+                            ax.add_patch(polygon)
+
+                        # Draw landmarks
+                        landmarks = item.get('landmarks', [])
+                        for i in range(0, len(landmarks), 3):
+                            x, y, v = landmarks[i], landmarks[i+1], landmarks[i+2]
+                            if v == 2:  # Visible
+                                ax.plot(x, y, 'bo')  # Blue dot for visible
+                            elif v == 1:  # Occlusion
+                                ax.plot(x, y, 'yo')  # Yellow dot for occlusion
+
+                # Show image with labels and annotations
+                plt.title('\n'.join(labels))
+                plt.axis('off')  # Hide axes
+                plt.show()
+            
+            except Exception as e:
+                print(f"Error processing {filename}: {e}")
 
 
 class CCPDataset(Dataset):
