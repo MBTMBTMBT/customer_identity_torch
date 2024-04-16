@@ -90,21 +90,21 @@ if __name__ == "__main__":
 
     # train loop
     num_epochs = 60
-    mode = 1
+    mode = 'seg'
     for epoch in range(start_epoch, num_epochs):
         if epoch >= 15:
-            mode = 2
+            mode = 'pred'
         else:
-            mode = 1
+            mode = 'seg'
         print(f'Epoch {epoch + 1}/{num_epochs}, mode={mode}')
         print('-' * 10)
 
         # train, validate, test
-        train_loss, mask_train_loss, pred_train_loss = train_CelebA(model, optimizer, train_loader, criterion_mask,
+        train_loss, mask_train_loss, pred_train_loss = train(model, optimizer, train_loader, criterion_mask,
                                                              criterion_pred, epoch, device, mode=mode)
-        val_loss, mask_val_loss, pred_val_loss = validate_CelebA(model, val_loader, criterion_mask, criterion_pred, epoch,
+        val_loss, mask_val_loss, pred_val_loss = validate(model, val_loader, criterion_mask, criterion_pred, epoch,
                                                           device)
-        test_loss, mask_test_loss, pred_test_loss = test_CelebA(model, test_loader, criterion_mask, criterion_pred, epoch,
+        test_loss, mask_test_loss, pred_test_loss = test(model, test_loader, criterion_mask, criterion_pred, epoch,
                                                          device)
 
         # write to TensorBoard
