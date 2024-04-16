@@ -142,11 +142,11 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
         # colour_labels = colour_labels.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
-        total = len(val_loader)
-        scale_factor = i / total * 1.2 + 0.3
-        # scale_factor = random.uniform(0.2, 1)
-        inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
-                                                                                                     scale_factor)
+        # total = len(val_loader)
+        # scale_factor = i / total * 0.5 + 0.5
+        # # scale_factor = random.uniform(0.2, 1)
+        # inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+        #                                                                                              scale_factor)
 
         pred_masks, pred_classes = model(inputs)
         mask_loss = criterion_mask(pred_masks, mask_labels)
