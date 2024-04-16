@@ -50,9 +50,12 @@ def _scale_images_uniformly(images: torch.Tensor, scale_factor: float):
     return scaled_images
 
 
-def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode=0):
+modes = ['seg', 'pred', 'mix']
+
+
+def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode='mix'):
+    assert mode in modes
     model.train()
-    running_loss = 0.0
     running_accuracy = 0.0
     running_loss = 0.0
     mask_running_loss = 0.0
@@ -60,26 +63,6 @@ def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred,
     progress_bar = tqdm(train_loader, desc=f'Training Epoch {epoch}')
     for i, batch in enumerate(progress_bar):
         inputs, mask_labels, attributes, = batch
-
-        # img = inputs.clone().squeeze(0).permute(1, 2, 0).numpy().clip(0, 1)
-        # # _img = _inputs.clone().squeeze(0).permute(1, 2, 0).numpy().clip(0, 1)
-        # masks = mask_labels.clone().squeeze(0).numpy().astype(np.uint8)
-        # mask_list = [masks[i,:,:] for i in range(masks.shape[0])]
-        # _classes = classes.clone().detach().squeeze(0).numpy().astype(np.uint8)
-        # class_list = [_classes[i].item() > 0.5 for i in range(_classes.shape[0])]
-        # # _colour_labels = (colour_labels.clone().detach().squeeze(0)*255).numpy().astype(np.uint8)
-        # colour_list = [np.array([255,255,255], dtype=np.uint8) for i in range(len(class_list))]
-        # combined_image = plot_with_matplotlib(
-        #     img, 
-        #     ['hair', 'hat', 'eye_g', 'skin',],  # 'brow', 'eye', 'mouth', 'nose', ],
-        #     mask_list,
-        #     class_list + [None for _ in range(len(mask_list) - len(class_list))],
-        #     colour_list,
-        #     )
-        # cv2.namedWindow('Display', cv2.WINDOW_NORMAL)
-        # cv2.resizeWindow('Display', 800, 400)  # adjust the size as needed
-        # combined_image = cv2.cvtColor(combined_image, cv2.COLOR_BGR2RGB)
-        # cv2.imshow('Display', combined_image)
 
         attributes = attributes.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
@@ -114,11 +97,11 @@ def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred,
         # Now `positive_accuracy` will be the accuracy only for the class with label 1
         accuracy = positive_accuracy
 
-        if mode == 1:
+        if mode == 'seg':
             # print('Training segmentation only.')
             model.unfreeze_segment_model()
             mask_loss.backward()
-        elif mode == 0:
+        elif mode == 'pred':
             # print('Training classification only.')
             model.freeze_segment_model()
             pred_loss.backward()
@@ -145,7 +128,7 @@ def train_CelebA(model, optimizer, train_loader, criterion_mask, criterion_pred,
     return train_loss, mask_train_loss, pred_train_loss
 
 
-def validate_CelebA(model, val_loader, criterion_mask, criterion_pred, epoch, device):
+def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
     model.eval()
     running_loss = 0.0
     running_accuracy = 0.0
@@ -191,8 +174,6 @@ def validate_CelebA(model, val_loader, criterion_mask, criterion_pred, epoch, de
         running_loss += loss.item()
         mask_running_loss += mask_loss.item()
         pred_running_loss += pred_loss.item()
-        # cl_running_loss += cl_loss.item()
-        # rg_running_loss += rg_loss.item()
         running_accuracy += accuracy
         progress_bar.set_description(
             f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
@@ -203,7 +184,7 @@ def validate_CelebA(model, val_loader, criterion_mask, criterion_pred, epoch, de
     return val_loss, mask_val_loss, pred_val_loss
 
 
-def test_CelebA(model, test_loader, criterion_mask, criterion_pred, epoch, device):
+def test(model, test_loader, criterion_mask, criterion_pred, epoch, device):
     model.eval()
     running_loss = 0.0
     running_accuracy = 0.0
