@@ -23,7 +23,7 @@ from torchvision.transforms import functional as TF
 #     logical = 1
 
 
-class Deepfashion2Dataset(Dataset):
+class DeepFashion2Dataset(Dataset):
     categories = [
         'short sleeve top', 'long sleeve top', 'short sleeve outwear',
         'long sleeve outwear', 'vest', 'sling', 'shorts',
