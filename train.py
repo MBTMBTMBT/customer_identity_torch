@@ -120,7 +120,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
 
         running_accuracy += accuracy
         progress_bar.set_description(
-            f'Train E{epoch}: ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
+            f'Train E{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item():.3f} Acc:{accuracy:.2f}')
 
     train_loss = running_loss / len(train_loader)
     mask_train_loss = mask_running_loss / len(train_loader)
