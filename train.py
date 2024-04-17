@@ -180,7 +180,7 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
         else:
             positive_accuracy = torch.tensor(0.0)  # If no positive samples, set accuracy to 0
         # Now `positive_accuracy` will be the accuracy only for the class with label 1
-        accuracy = positive_accuracy
+        accuracy = positive_accuracy.detach().cpu().item()
 
         running_loss += loss.item()
         mask_running_loss += mask_loss.item()
