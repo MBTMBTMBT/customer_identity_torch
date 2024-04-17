@@ -14,13 +14,13 @@ if __name__ == "__main__":
     scale_range = (0.5, 1.0)
     # datasets
     train_dataset = DeepFashion2Dataset(
-        image_dir='/home/bentengma/work_space/deepfashion2/train/image',
-        anno_dir='/home/bentengma/work_space/deepfashion2/train/annos',
+        image_dir='../deepfashion2/train/image',
+        anno_dir='../deepfashion2/train/annos',
         output_size=image_size,
     )
     val_dataset = DeepFashion2Dataset(
-        image_dir='/home/bentengma/work_space/deepfashion2/validation/image',
-        anno_dir='/home/bentengma/work_space/deepfashion2/validation/annos',
+        image_dir='../deepfashion2/validation/image',
+        anno_dir='../deepfashion2/validation/annos',
         output_size=image_size,
     )
     # train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
