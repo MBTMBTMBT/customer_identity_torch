@@ -57,14 +57,14 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
-    writer = SummaryWriter('runs/24-4-16/deepfashion2')
+    writer = SummaryWriter('deepfashion2')
 
     # early stopping params
     early_stopping_patience = 5
     early_stopping_counter = 0
 
     # check model saving dir
-    model_dir = "saved-models-deepfashion2"
+    model_dir = "deepfashion2"
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
