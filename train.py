@@ -121,12 +121,12 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
         running_accuracy += accuracy
         progress_bar.set_description(
             f'Train E{epoch}: ML:{mask_loss.item():.4f} PL:{pred_loss.item():.3f} Acc:{accuracy:.2f}')
-        if tb_writer is not None and counter >= -1:
+        if tb_writer is not None and counter > -1:
             tb_writer.add_scalar('Loss/Train', mask_loss.item(), counter)
             tb_writer.add_scalar('LossMask/Train', mask_loss.item(), counter)
             tb_writer.add_scalar('LossMask/Validation', pred_loss.item(), counter)
-            tb_writer.add_scalar('Accuracy/Train', accuracy, epoch)
-        if counter >= -1:
+            tb_writer.add_scalar('Accuracy/Train', accuracy, counter)
+        if counter > -1:
             counter += 1
 
     train_loss = running_loss / len(train_loader)
