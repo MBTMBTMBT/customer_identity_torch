@@ -124,7 +124,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
         if tb_writer is not None and counter > -1:
             tb_writer.add_scalar('Loss/Train', mask_loss.item(), counter)
             tb_writer.add_scalar('LossMask/Train', mask_loss.item(), counter)
-            tb_writer.add_scalar('LossMask/Validation', pred_loss.item(), counter)
+            tb_writer.add_scalar('LossPred/Train', pred_loss.item(), counter)
             tb_writer.add_scalar('Accuracy/Train', accuracy, counter)
         if counter > -1:
             counter += 1
