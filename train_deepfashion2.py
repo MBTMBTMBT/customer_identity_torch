@@ -72,10 +72,12 @@ if __name__ == "__main__":
     latest_checkpoint = find_latest_checkpoint(model_dir)
     if latest_checkpoint:
         print(f"Loading model from {latest_checkpoint}")
-        model, optimizer, start_epoch, best_val_loss = load_model(model, optimizer, path=latest_checkpoint)
+        model, optimizer, start_epoch, best_val_loss, counter = load_model(model, optimizer, path=latest_checkpoint)
         start_epoch += 1
+        counter += 1
     else:
         start_epoch = 0
+        counter = 0
         best_val_loss = float('inf')
 
     # train loop
@@ -86,23 +88,24 @@ if __name__ == "__main__":
         print('-' * 10)
 
         # train, validate, test
-        train_loss, mask_train_loss, pred_train_loss = train(model, optimizer, train_loader, criterion_mask,
-                                                             criterion_pred, scale_range, epoch, device, mode=mode)
-        val_loss, mask_val_loss, pred_val_loss = validate(model, val_loader, criterion_mask, criterion_pred, epoch,
+        train_loss, mask_train_loss, pred_train_loss, acc, counter = train(model, optimizer, train_loader, criterion_mask,
+                                                             criterion_pred, scale_range, epoch, device, mode=mode, tb_writer=writer, counter=counter)
+        val_loss, mask_val_loss, pred_val_loss, acc = validate(model, val_loader, criterion_mask, criterion_pred, epoch,
                                                           device)
 
         # write to TensorBoard
-        writer.add_scalar('Loss/Train', train_loss, epoch)
+        # writer.add_scalar('Loss/Train', train_loss, epoch)
         writer.add_scalar('Loss/Validation', val_loss, epoch)
-        writer.add_scalar('LossMask/Train', mask_train_loss, epoch)
+        # writer.add_scalar('LossMask/Train', mask_train_loss, epoch)
         writer.add_scalar('LossMask/Validation', mask_val_loss, epoch)
-        writer.add_scalar('LossPred/Train', pred_train_loss, epoch)
+        # writer.add_scalar('LossPred/Train', pred_train_loss, epoch)
         writer.add_scalar('LossPred/Validation', pred_val_loss, epoch)
+        writer.add_scalar('Accuracy/Validation', acc, epoch)
 
         # save the model
         if val_loss < best_val_loss:
             print(f"Validation loss decreased ({best_val_loss:.6f} --> {val_loss:.6f}).  Saving model ...")
-            save_model(epoch, model, optimizer, val_loss, path=f"{model_dir}/model_epoch_{epoch}.pth")
+            save_model(epoch, model, optimizer, val_loss, path=f"{model_dir}/model_epoch_{epoch}.pth", counter=counter)
             best_val_loss = val_loss
             early_stopping_counter = 0
         else:

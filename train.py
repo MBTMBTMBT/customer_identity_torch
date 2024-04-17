@@ -53,7 +53,7 @@ def _scale_images_uniformly(images: torch.Tensor, scale_factor: float):
 modes = ['seg', 'pred', 'mix']
 
 
-def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode='mix'):
+def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode='mix', tb_writer=None, counter=-1):
     assert mode in modes
     model.train()
     running_accuracy = 0.0
@@ -120,12 +120,23 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
 
         running_accuracy += accuracy
         progress_bar.set_description(
-            f'Train E{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item():.3f} Acc:{accuracy:.2f}')
+            f'Train E{epoch}: ML:{mask_loss.item():.4f} PL:{pred_loss.item():.3f} Acc:{accuracy:.2f}')
+        if tb_writer is not None and counter >= -1:
+            tb_writer.add_scalar('Loss/Train', mask_loss.item(), counter)
+            tb_writer.add_scalar('LossMask/Train', mask_loss.item(), counter)
+            tb_writer.add_scalar('LossMask/Validation', pred_loss.item(), counter)
+            tb_writer.add_scalar('Accuracy/Train', accuracy, epoch)
+        if counter >= -1:
+            counter += 1
 
     train_loss = running_loss / len(train_loader)
     mask_train_loss = mask_running_loss / len(train_loader)
     pred_train_loss = pred_running_loss / len(train_loader)
-    return train_loss, mask_train_loss, pred_train_loss
+    progress_bar.set_description(
+        f'Train E{epoch}: ML:{mask_train_loss:.4f} PL:{pred_train_loss:.3f} Acc:{running_accuracy / len(train_loader):.2f}')
+    if counter >= -1:
+        return train_loss, mask_train_loss, pred_train_loss, running_accuracy / len(train_loader), counter
+    return train_loss, mask_train_loss, pred_train_loss, running_accuracy / len(train_loader)
 
 
 def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
@@ -176,12 +187,12 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
         pred_running_loss += pred_loss.item()
         running_accuracy += accuracy
         progress_bar.set_description(
-            f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
+            f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.4f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
     pred_val_loss = pred_running_loss / len(val_loader)
-    return val_loss, mask_val_loss, pred_val_loss
+    return val_loss, mask_val_loss, pred_val_loss, running_accuracy / len(val_loader)
 
 
 def test(model, test_loader, criterion_mask, criterion_pred, epoch, device):
