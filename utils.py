@@ -211,6 +211,7 @@ def save_model(epoch, model, optimizer, best_val_loss, path: str, counter=-1):
         'best_val_loss': best_val_loss,
         'counter': counter,
     }, path)
+    print('Saved: epoch {}, counter {}, path {}.'.format(epoch, counter, path))
 
 
 def load_model(model, optimizer, path="model.pth", cpu_only=False):
@@ -223,9 +224,11 @@ def load_model(model, optimizer, path="model.pth", cpu_only=False):
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
     best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+    # print(set(checkpoint.keys()))
+    # print('counter' in set(checkpoint.keys()))
     if 'counter' in checkpoint.keys():
         counter = checkpoint['counter']
-        return epoch, model, best_val_loss, counter
+        return model, optimizer, epoch, best_val_loss, counter
     return model, optimizer, epoch, best_val_loss
 
 
