@@ -7,7 +7,7 @@ if __name__ == "__main__":
     from datasets import *
     from train import *
 
-    seed = 0  # random.randint(0, 1024)
+    seed = random.randint(0, 1024)
     torch.manual_seed(seed)
 
     image_size = (256, 192)
