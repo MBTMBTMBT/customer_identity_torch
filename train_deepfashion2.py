@@ -30,12 +30,12 @@ if __name__ == "__main__":
         noise_level=(0, 1), blur_radius=(0, 2), brightness_factor=(0.85, 1.25),
         seed=seed,
     )  # replace with augmented dataset
-    val_dataset = AugmentedDataset(
-        dataset_source=val_dataset, output_size=image_size,
-        flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(1, 1),
-        noise_level=(0, 0), blur_radius=(0, 0), brightness_factor=(1, 1),
-        seed=seed,
-    )
+    # val_dataset = AugmentedDataset(
+    #     dataset_source=val_dataset, output_size=image_size,
+    #     flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(1, 1),
+    #     noise_level=(0, 0), blur_radius=(0, 0), brightness_factor=(1, 1),
+    #     seed=seed,
+    # )
 
     # dataLoaders
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=12)
