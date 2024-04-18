@@ -1,3 +1,4 @@
+import torch
 from tqdm import tqdm
 import random
 
@@ -147,47 +148,48 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
     mask_running_loss = 0.0
     pred_running_loss = 0.0
     progress_bar = tqdm(val_loader, desc=f'Validation Epoch {epoch}')
-    for i, batch in enumerate(progress_bar):
-        inputs, mask_labels, attributes, = batch
-        attributes = attributes.to(device)
-        # colour_labels = colour_labels.to(device)
-        inputs, mask_labels = inputs.to(device), mask_labels.to(device)
+    with torch.no_grad():
+        for i, batch in enumerate(progress_bar):
+            inputs, mask_labels, attributes, = batch
+            attributes = attributes.to(device)
+            # colour_labels = colour_labels.to(device)
+            inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
-        # total = len(val_loader)
-        # scale_factor = i / total * 0.5 + 0.5
-        # # scale_factor = random.uniform(0.2, 1)
-        # inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
-        #                                                                                              scale_factor)
+            # total = len(val_loader)
+            # scale_factor = i / total * 0.5 + 0.5
+            # # scale_factor = random.uniform(0.2, 1)
+            # inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+            #                                                                                              scale_factor)
 
-        pred_masks, pred_classes = model(inputs)
-        mask_loss = criterion_mask(pred_masks, mask_labels)
-        # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
-        pred_loss = criterion_pred(pred_classes, attributes)
-        loss = mask_loss + pred_loss
+            pred_masks, pred_classes = model(inputs)
+            mask_loss = criterion_mask(pred_masks, mask_labels)
+            # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
+            pred_loss = criterion_pred(pred_classes, attributes)
+            loss = mask_loss + pred_loss
 
-        # Assume `predictions` and `classes` are your model's predictions and true class labels respectively
-        predictions = pred_classes > 0.5
-        # Create a mask for where the true class labels are 1 (positive class)
-        positive_class_mask = (attributes == 1)
-        # Select predictions and true labels where true labels are 1
-        positive_predictions = predictions[positive_class_mask]
-        positive_true_labels = attributes[positive_class_mask]
-        # Calculate correct predictions for positive class
-        correct_positives = (positive_predictions == positive_true_labels).float()
-        # Calculate accuracy for positive class
-        if correct_positives.numel() > 0:  # Check to make sure we have positive samples
-            positive_accuracy = correct_positives.mean()
-        else:
-            positive_accuracy = torch.tensor(0.0)  # If no positive samples, set accuracy to 0
-        # Now `positive_accuracy` will be the accuracy only for the class with label 1
-        accuracy = positive_accuracy.detach().cpu().item()
+            # Assume `predictions` and `classes` are your model's predictions and true class labels respectively
+            predictions = pred_classes > 0.5
+            # Create a mask for where the true class labels are 1 (positive class)
+            positive_class_mask = (attributes == 1)
+            # Select predictions and true labels where true labels are 1
+            positive_predictions = predictions[positive_class_mask]
+            positive_true_labels = attributes[positive_class_mask]
+            # Calculate correct predictions for positive class
+            correct_positives = (positive_predictions == positive_true_labels).float()
+            # Calculate accuracy for positive class
+            if correct_positives.numel() > 0:  # Check to make sure we have positive samples
+                positive_accuracy = correct_positives.mean()
+            else:
+                positive_accuracy = torch.tensor(0.0)  # If no positive samples, set accuracy to 0
+            # Now `positive_accuracy` will be the accuracy only for the class with label 1
+            accuracy = positive_accuracy.detach().cpu().item()
 
-        running_loss += loss.item()
-        mask_running_loss += mask_loss.item()
-        pred_running_loss += pred_loss.item()
-        running_accuracy += accuracy
-        progress_bar.set_description(
-            f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.4f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
+            running_loss += loss.item()
+            mask_running_loss += mask_loss.item()
+            pred_running_loss += pred_loss.item()
+            running_accuracy += accuracy
+            progress_bar.set_description(
+                f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.4f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
