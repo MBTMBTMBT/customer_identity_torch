@@ -642,9 +642,6 @@ class AugmentedDataset(Dataset):
             "crop_height_ratio": new_crop_height_ratio,
             "crop_left_ratio": new_crop_left_ratio,
             "crop_top_ratio": new_crop_top_ratio,
-            # "noise_level": np.random.uniform(self.noise_level[0], self.noise_level[1]),
-            # "blur_value": np.random.uniform(self.blur_radius[0], self.blur_radius[1]),
-            # "brightness_value": np.random.uniform(self.brightness_factor[0], self.brightness_factor[1]),
             "scale_factor": np.random.uniform(self.scale_factor[0], self.scale_factor[1]),
         }
 
@@ -682,9 +679,6 @@ class AugmentedDataset(Dataset):
 
         # Resize to output size (again!) after cropping
         image = image.resize(self.output_size)
-
-        # Calculate random color for padding if necessary
-        random_color = self._get_random_colour(image)
 
         # Apply scale
         scale_factor = params["scale_factor"]
@@ -735,22 +729,6 @@ class AugmentedDataset(Dataset):
         image = enhancer.enhance(brightness_value)
 
         return image, ori_image
-
-    # def __getitem__(self, idx):
-    #     image, masks, attributes = self.source.__getitem__(idx)
-    #
-    #     # Generate transform params for this sample
-    #     transform_params = self._get_transform_params()
-    #
-    #     # Apply the same augmentations to image and masks using the generated params
-    #     image, ori_image = self._apply_image_transforms(image, transform_params)
-    #     masks = [self._apply_common_transforms(mask, transform_params) for mask in masks]
-    #
-    #     image = transforms.ToTensor()(image)
-    #     # ori_image = transforms.ToTensor()(ori_image)
-    #     masks = torch.stack([transforms.ToTensor()(m) for m in masks], dim=0).squeeze(1)
-    #
-    #     return image, masks, attributes,  # ori_image
 
     def __getitem__(self, idx):
         # Unpack the first three known returns and capture any additional ones in 'extra_returns'
