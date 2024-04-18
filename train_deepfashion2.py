@@ -38,8 +38,8 @@ if __name__ == "__main__":
     )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=16)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=16)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=12)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=12)
 
     # model
     segment_model = UNetWithResnetEncoder(num_classes=len(DeepFashion2Dataset.categories))
