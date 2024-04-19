@@ -7,8 +7,8 @@ if __name__ == "__main__":
     from datasets import *
     from train import *
 
-    seed = random.randint(0, 1024)
-    torch.manual_seed(seed)
+    seed = None  # random.randint(0, 1024)
+    # torch.manual_seed(seed)
 
     image_size = (256, 192)
     scale_range = (0.5, 1.0)
@@ -23,13 +23,14 @@ if __name__ == "__main__":
         anno_dir='../deepfashion2/validation/annos',
         output_size=image_size,
     )
-    # train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
+    train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
     train_dataset = AugmentedDataset(
         dataset_source=train_dataset, output_size=image_size,
         flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.9, 1.1),
         noise_level=(0, 1), blur_radius=(0, 2), brightness_factor=(0.85, 1.25),
         seed=seed,
-    )  # replace with augmented dataset
+    )
+    # replace with augmented dataset
     # val_dataset = AugmentedDataset(
     #     dataset_source=val_dataset, output_size=image_size,
     #     flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(1, 1),

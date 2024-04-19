@@ -65,6 +65,10 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
     for i, batch in enumerate(progress_bar):
         inputs, mask_labels, attributes, = batch
 
+        _input, _mask_labels, _attributes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy()
+        from datasets import show_deepfashion2_image_masks_and_labels
+        show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes)
+
         attributes = attributes.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
@@ -123,7 +127,7 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
         progress_bar.set_description(
             f'Train E{epoch}: ML:{mask_loss.item():.4f} PL:{pred_loss.item():.3f} Acc:{accuracy:.2f}')
         if tb_writer is not None and counter > -1:
-            tb_writer.add_scalar('Loss/Train', mask_loss.item(), counter)
+            tb_writer.add_scalar('Loss/Train', loss.item(), counter)
             tb_writer.add_scalar('LossMask/Train', mask_loss.item(), counter)
             tb_writer.add_scalar('LossPred/Train', pred_loss.item(), counter)
             tb_writer.add_scalar('Accuracy/Train', accuracy, counter)

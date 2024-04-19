@@ -98,17 +98,46 @@ class DeepFashion2Dataset(Dataset):
             return current_size[0], int(current_size[0] / target_ratio)
 
 
-def show_deepfashion2_image_masks_and_labels(dataset, index):
-    # Get the data from the dataset
-    image, masks, labels = dataset[index]
+# def show_deepfashion2_image_masks_and_labels(dataset, index):
+#     # Get the data from the dataset
+#     image, masks, labels = dataset[index]
+#
+#     # Convert the image tensor to PIL Image for display
+#     image_pil = transforms.ToPILImage()(image)
+#
+#     # Set up the plot
+#     num_subplots = len(dataset.categories) + 1
+#     fig, axs = plt.subplots(1, num_subplots, figsize=(20, 3))
+#
+#     # Plot the original image
+#     axs[0].imshow(image_pil)
+#     axs[0].set_title('Original Image')
+#     axs[0].axis('off')
+#
+#     # Plot each mask
+#     for i, mask in enumerate(masks):
+#         axs[i + 1].imshow(mask, cmap='gray', interpolation='none')
+#         axs[i + 1].set_title(f'{dataset.categories[i]}: {"1" if labels[i] == 1.0 else "0"}')
+#         axs[i + 1].axis('off')
+#
+#     plt.tight_layout()
+#     plt.show()
+
+def show_deepfashion2_image_masks_and_labels(image, masks, labels):
+    categories = [
+        'short sleeve top', 'long sleeve top', 'short sleeve outwear',
+        'long sleeve outwear', 'vest', 'sling', 'shorts',
+        'trousers', 'skirt', 'short sleeve dress',
+        'long sleeve dress', 'vest dress', 'sling dress'
+    ]
 
     # Convert the image tensor to PIL Image for display
     image_pil = transforms.ToPILImage()(image)
 
     # Set up the plot
-    num_subplots = len(dataset.categories) + 1
+    num_subplots = len(labels) + 1
     fig, axs = plt.subplots(1, num_subplots, figsize=(20, 3))
-    
+
     # Plot the original image
     axs[0].imshow(image_pil)
     axs[0].set_title('Original Image')
@@ -117,7 +146,7 @@ def show_deepfashion2_image_masks_and_labels(dataset, index):
     # Plot each mask
     for i, mask in enumerate(masks):
         axs[i + 1].imshow(mask, cmap='gray', interpolation='none')
-        axs[i + 1].set_title(f'{dataset.categories[i]}: {"1" if labels[i] == 1.0 else "0"}')
+        axs[i + 1].set_title(f'{categories[i]}: {"1" if labels[i] == 1.0 else "0"}')
         axs[i + 1].axis('off')
 
     plt.tight_layout()
