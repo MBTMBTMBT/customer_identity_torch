@@ -30,8 +30,8 @@ class DeepFashion2Dataset(Dataset):
         'trousers', 'skirt', 'short sleeve dress', 
         'long sleeve dress', 'vest dress', 'sling dress'
     ]
-    def __init__(self, image_dir, anno_dir, output_size=(400, 300)):
-        self.output_size = output_size  # H, W
+    def __init__(self, image_dir, anno_dir, output_size=(300, 400)):
+        self.output_size = (output_size[1], output_size[0])  # input: W, H
         self.image_dir = image_dir
         self.anno_dir = anno_dir
         self.image_filenames = [x for x in os.listdir(image_dir) if x.endswith('.jpg')]
@@ -47,45 +47,45 @@ class DeepFashion2Dataset(Dataset):
         img_name = self.image_filenames[idx]
         img_path = os.path.join(self.image_dir, img_name)
         image = Image.open(img_path).convert('RGB')
-        
+
         # Determine the crop size based on the aspect ratio of output_size
-        crop_width, crop_height = self.get_max_crop(image.size, self.output_size)
-        
-        # Crop the image
-        image = TF.center_crop(image, (crop_height, crop_width))
-        
-        # Resize image to output size
-        image = TF.resize(image, self.output_size)
-        image_tensor = self.transform(image)
-        
+        crop_height, crop_width = self.get_max_crop(image.size, self.output_size)
+
         # Initialize mask array
         masks = torch.zeros((len(self.categories), *self.output_size), dtype=torch.float32)
-        labels = torch.zeros(len(self.categories), dtype=torch.float32)
+        # labels = torch.zeros(len(self.categories), dtype=torch.float32)
 
         # Load annotation
         anno_path = os.path.join(self.anno_dir, img_name.replace('.jpg', '.json'))
         with open(anno_path, 'r', encoding='utf-8') as file:
             anno_data = json.load(file)
-        
+
         # Create masks and determine labels
         for item_key, item_value in anno_data.items():
             if item_key.startswith('item'):
                 category_id = item_value.get('category_id', 0) - 1
                 if 0 <= category_id < len(self.categories):
+                    mask = Image.new('L', image.size, 0)
+                    draw = ImageDraw.Draw(mask)
                     for segment in item_value.get('segmentation', []):
-                        mask = Image.new('L', image.size, 0)
-                        draw = ImageDraw.Draw(mask)
-                        draw.polygon(segment, outline=1, fill=1)
-                        mask = TF.center_crop(mask, (crop_height, crop_width))
-                        mask = TF.resize(mask, self.output_size)
-                        mask_tensor = self.transform(mask).squeeze(0)  # Convert to tensor and remove channel dim
-                        masks[category_id] = torch.max(masks[category_id], mask_tensor)  # Use torch.max to combine masks
-        
+                        draw.polygon(segment, fill=255)
+                    mask = TF.center_crop(mask, (crop_height, crop_width))
+                    mask = TF.resize(mask, self.output_size)
+                    mask_tensor = self.transform(mask).squeeze(0)  # Convert to tensor and remove channel dim
+                    masks[category_id] = torch.max(masks[category_id], mask_tensor)  # Use torch.max to combine masks
+
+        # Crop the image
+        image = TF.center_crop(image, (crop_height, crop_width))
+
+        # Resize image to output size
+        image = TF.resize(image, self.output_size)
+        image_tensor = self.transform(image)
+
         # Update labels based on mask presence after cropping
         labels = (torch.sum(masks.reshape(len(self.categories), -1), dim=1) > 0).float()
 
         return image_tensor, masks, labels
-    
+
     @staticmethod
     def get_max_crop(current_size, target_ratio):
         current_ratio = current_size[0] / current_size[1]
