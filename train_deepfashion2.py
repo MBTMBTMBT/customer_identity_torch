@@ -24,12 +24,12 @@ if __name__ == "__main__":
         output_size=image_size,
     )
     # train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
-    train_dataset = AugmentedDataset(
-        dataset_source=train_dataset, output_size=image_size,
-        flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.9, 1.1),
-        noise_level=(0, 1), blur_radius=(0, 2), brightness_factor=(0.85, 1.25),
-        seed=seed,
-    )
+    # train_dataset = AugmentedDataset(
+    #     dataset_source=train_dataset, output_size=image_size,
+    #     flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.9, 1.1),
+    #     noise_level=(0, 1), blur_radius=(0, 2), brightness_factor=(0.85, 1.25),
+    #     seed=seed,
+    # )
     # replace with augmented dataset
     # val_dataset = AugmentedDataset(
     #     dataset_source=val_dataset, output_size=image_size,
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=12)
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=0, collate_fn=collate_fn_DeepFashion2)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=12)
 
     # model
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         print('-' * 10)
 
         # train, validate, test
-        train_loss, mask_train_loss, pred_train_loss, train_acc, counter = train(model, optimizer, train_loader, criterion_mask,
+        train_loss, mask_train_loss, pred_train_loss, train_acc, counter = train_DeepFashion2(model, optimizer, train_loader, criterion_mask,
                                                              criterion_pred, scale_range, epoch, device, mode=mode, tb_writer=writer, counter=counter)
         val_loss, mask_val_loss, pred_val_loss, val_acc = validate(model, val_loader, criterion_mask, criterion_pred, epoch,
                                                           device)

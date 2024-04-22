@@ -16,6 +16,7 @@ from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCateg
 import json
 import matplotlib.patches as patches
 from torchvision.transforms import functional as TF
+from matplotlib.patches import Rectangle
 
 
 # class CategoryType(enum.Enum):
@@ -23,15 +24,91 @@ from torchvision.transforms import functional as TF
 #     logical = 1
 
 
+# class DeepFashion2Dataset(Dataset):
+#     categories = [
+#         'short sleeve top', 'long sleeve top', 'short sleeve outwear',
+#         'long sleeve outwear', 'vest', 'sling', 'shorts',
+#         'trousers', 'skirt', 'short sleeve dress',
+#         'long sleeve dress', 'vest dress', 'sling dress'
+#     ]
+#     def __init__(self, image_dir, anno_dir, output_size=(300, 400)):
+#         self.output_size = (output_size[1], output_size[0])  # input: W, H
+#         self.image_dir = image_dir
+#         self.anno_dir = anno_dir
+#         self.image_filenames = [x for x in os.listdir(image_dir) if x.endswith('.jpg')]
+#         self.transform = transforms.Compose([
+#             transforms.ToTensor(),  # Converts to Torch tensor and scales to [0, 1]
+#         ])
+#
+#     def __len__(self):
+#         return len(self.image_filenames)
+#
+#     def __getitem__(self, idx):
+#         # Load and transform image
+#         img_name = self.image_filenames[idx]
+#         img_path = os.path.join(self.image_dir, img_name)
+#         image = Image.open(img_path).convert('RGB')
+#
+#         # Determine the crop size based on the aspect ratio of output_size
+#         crop_height, crop_width = self.get_max_crop(image.size, self.output_size)
+#
+#         # Initialize mask array
+#         masks = torch.zeros((len(self.categories), *self.output_size), dtype=torch.float32)
+#         # labels = torch.zeros(len(self.categories), dtype=torch.float32)
+#
+#         # Load annotation
+#         anno_path = os.path.join(self.anno_dir, img_name.replace('.jpg', '.json'))
+#         with open(anno_path, 'r', encoding='utf-8') as file:
+#             anno_data = json.load(file)
+#
+#         # Create masks and determine labels
+#         for item_key, item_value in anno_data.items():
+#             if item_key.startswith('item'):
+#                 category_id = item_value.get('category_id', 0) - 1
+#                 if 0 <= category_id < len(self.categories):
+#                     mask = Image.new('L', image.size, 0)
+#                     draw = ImageDraw.Draw(mask)
+#                     for segment in item_value.get('segmentation', []):
+#                         draw.polygon(segment, fill=255)
+#                     mask = TF.center_crop(mask, (crop_height, crop_width))
+#                     mask = TF.resize(mask, self.output_size)
+#                     mask_tensor = self.transform(mask).squeeze(0)  # Convert to tensor and remove channel dim
+#                     masks[category_id] = torch.max(masks[category_id], mask_tensor)  # Use torch.max to combine masks
+#
+#         # Crop the image
+#         image = TF.center_crop(image, (crop_height, crop_width))
+#
+#         # Resize image to output size
+#         image = TF.resize(image, self.output_size)
+#         image_tensor = self.transform(image)
+#
+#         # Update labels based on mask presence after cropping
+#         labels = (torch.sum(masks.reshape(len(self.categories), -1), dim=1) > 0).float()
+#
+#         return image_tensor, masks, labels
+#
+#     @staticmethod
+#     def get_max_crop(current_size, target_ratio):
+#         current_ratio = current_size[0] / current_size[1]
+#         target_ratio = target_ratio[0] / target_ratio[1]
+#         if current_ratio > target_ratio:
+#             # Crop width to fit target ratio
+#             return int(current_size[1] * target_ratio), current_size[1]
+#         else:
+#             # Crop height to fit target ratio
+#             return current_size[0], int(current_size[0] / target_ratio)
+
+
 class DeepFashion2Dataset(Dataset):
     categories = [
         'short sleeve top', 'long sleeve top', 'short sleeve outwear',
         'long sleeve outwear', 'vest', 'sling', 'shorts',
-        'trousers', 'skirt', 'short sleeve dress', 
+        'trousers', 'skirt', 'short sleeve dress',
         'long sleeve dress', 'vest dress', 'sling dress'
     ]
+
     def __init__(self, image_dir, anno_dir, output_size=(300, 400)):
-        self.output_size = (output_size[1], output_size[0])  # input: W, H
+        self.output_size = output_size  # input: W, H
         self.image_dir = image_dir
         self.anno_dir = anno_dir
         self.image_filenames = [x for x in os.listdir(image_dir) if x.endswith('.jpg')]
@@ -49,53 +126,101 @@ class DeepFashion2Dataset(Dataset):
         image = Image.open(img_path).convert('RGB')
 
         # Determine the crop size based on the aspect ratio of output_size
-        crop_height, crop_width = self.get_max_crop(image.size, self.output_size)
-
-        # Initialize mask array
-        masks = torch.zeros((len(self.categories), *self.output_size), dtype=torch.float32)
-        # labels = torch.zeros(len(self.categories), dtype=torch.float32)
+        crop_width, crop_height = self.get_max_crop((image.size[0], image.size[1]), self.output_size)
 
         # Load annotation
         anno_path = os.path.join(self.anno_dir, img_name.replace('.jpg', '.json'))
         with open(anno_path, 'r', encoding='utf-8') as file:
             anno_data = json.load(file)
 
-        # Create masks and determine labels
+        # Initialize mask array and bbox list
+        masks = torch.zeros((len(self.categories), self.output_size[1], self.output_size[0]), dtype=torch.float32)
+        labels = torch.zeros(len(self.categories), dtype=torch.float32)
+        bboxes = []
+
+        # Process each item in the annotation
         for item_key, item_value in anno_data.items():
             if item_key.startswith('item'):
                 category_id = item_value.get('category_id', 0) - 1
+                bbox = item_value.get('bounding_box', [])
                 if 0 <= category_id < len(self.categories):
+                    # Create mask for current item
                     mask = Image.new('L', image.size, 0)
                     draw = ImageDraw.Draw(mask)
                     for segment in item_value.get('segmentation', []):
                         draw.polygon(segment, fill=255)
                     mask = TF.center_crop(mask, (crop_height, crop_width))
-                    mask = TF.resize(mask, self.output_size)
+                    mask = TF.resize(mask, (self.output_size[1], self.output_size[0]))
                     mask_tensor = self.transform(mask).squeeze(0)  # Convert to tensor and remove channel dim
                     masks[category_id] = torch.max(masks[category_id], mask_tensor)  # Use torch.max to combine masks
 
+                    # Convert absolute bbox coordinates to relative based on crop and resize
+                    rel_bbox = self.convert_bbox(bbox, image.size, (crop_width, crop_height), self.output_size)
+                    bboxes.append((category_id, rel_bbox))
+
         # Crop the image
         image = TF.center_crop(image, (crop_height, crop_width))
-
-        # Resize image to output size
-        image = TF.resize(image, self.output_size)
+        image = TF.resize(image, (self.output_size[1], self.output_size[0]))
         image_tensor = self.transform(image)
 
         # Update labels based on mask presence after cropping
         labels = (torch.sum(masks.reshape(len(self.categories), -1), dim=1) > 0).float()
 
-        return image_tensor, masks, labels
+        return image_tensor, masks, labels, bboxes
+
+    def convert_bbox(self, bbox, orig_size, crop_size, output_size):
+        x1, y1, x2, y2 = bbox
+        orig_width, orig_height = orig_size
+        crop_width, crop_height = crop_size
+        output_width, output_height = output_size
+
+        # Calculate crop offsets (assuming center crop)
+        x_offset = (orig_width - crop_width) // 2
+        y_offset = (orig_height - crop_height) // 2
+
+        # Adjust bbox coordinates to cropped image
+        x1_cropped = x1 - x_offset
+        y1_cropped = y1 - y_offset
+        x2_cropped = x2 - x_offset
+        y2_cropped = y2 - y_offset
+
+        # Scale bbox coordinates to output size
+        x1_relative = max(0, x1_cropped / crop_width * output_width)
+        y1_relative = max(0, y1_cropped / crop_height * output_height)
+        x2_relative = min(output_width, x2_cropped / crop_width * output_width)
+        y2_relative = min(output_height, y2_cropped / crop_height * output_height)
+
+        return [x1_relative, y1_relative, x2_relative, y2_relative]
 
     @staticmethod
-    def get_max_crop(current_size, target_ratio):
+    def get_max_crop(current_size, target_size):
         current_ratio = current_size[0] / current_size[1]
-        target_ratio = target_ratio[0] / target_ratio[1]
+        target_ratio = target_size[0] / target_size[1]
         if current_ratio > target_ratio:
             # Crop width to fit target ratio
             return int(current_size[1] * target_ratio), current_size[1]
         else:
             # Crop height to fit target ratio
             return current_size[0], int(current_size[0] / target_ratio)
+
+
+def collate_fn_DeepFashion2(batch):
+    images = []
+    masks = []
+    labels = []
+    bboxes = []
+
+    for image, mask, label, bbox in batch:
+        images.append(image)
+        masks.append(mask)
+        labels.append(label)
+        bboxes.append(bbox)
+
+    images = torch.stack(images, 0)
+    masks = torch.stack(masks, 0)
+    labels = torch.stack(labels, 0)
+
+    return images, masks, labels, bboxes
 
 
 # def show_deepfashion2_image_masks_and_labels(dataset, index):
@@ -123,7 +248,38 @@ class DeepFashion2Dataset(Dataset):
 #     plt.tight_layout()
 #     plt.show()
 
-def show_deepfashion2_image_masks_and_labels(image, masks, labels):
+
+# def show_deepfashion2_image_masks_and_labels(image, masks, labels):
+#     categories = [
+#         'short sleeve top', 'long sleeve top', 'short sleeve outwear',
+#         'long sleeve outwear', 'vest', 'sling', 'shorts',
+#         'trousers', 'skirt', 'short sleeve dress',
+#         'long sleeve dress', 'vest dress', 'sling dress'
+#     ]
+#
+#     # Convert the image tensor to PIL Image for display
+#     image_pil = transforms.ToPILImage()(image)
+#
+#     # Set up the plot
+#     num_subplots = len(labels) + 1
+#     fig, axs = plt.subplots(1, num_subplots, figsize=(20, 3))
+#
+#     # Plot the original image
+#     axs[0].imshow(image_pil)
+#     axs[0].set_title('Original Image')
+#     axs[0].axis('off')
+#
+#     # Plot each mask
+#     for i, mask in enumerate(masks):
+#         axs[i + 1].imshow(mask, cmap='gray', interpolation='none')
+#         axs[i + 1].set_title(f'{categories[i]}: {"1" if labels[i] == 1.0 else "0"}')
+#         axs[i + 1].axis('off')
+#
+#     plt.tight_layout()
+#     plt.show()
+
+
+def show_deepfashion2_image_masks_and_labels(image, masks, labels, bboxes):
     categories = [
         'short sleeve top', 'long sleeve top', 'short sleeve outwear',
         'long sleeve outwear', 'vest', 'sling', 'shorts',
@@ -145,9 +301,18 @@ def show_deepfashion2_image_masks_and_labels(image, masks, labels):
 
     # Plot each mask
     for i, mask in enumerate(masks):
-        axs[i + 1].imshow(mask, cmap='gray', interpolation='none')
+        axs[i + 1].imshow(image_pil, alpha=0.7)  # Show the underlying image
+        axs[i + 1].imshow(mask, cmap='gray', alpha=0.3, interpolation='none')  # Overlay the mask
         axs[i + 1].set_title(f'{categories[i]}: {"1" if labels[i] == 1.0 else "0"}')
         axs[i + 1].axis('off')
+
+        # Add bounding boxes to the plot
+        for cat_id, bbox in bboxes:
+            if cat_id == i:
+                # Bbox format: [x1_relative, y1_relative, x2_relative, y2_relative]
+                x1, y1, x2, y2 = bbox
+                rect = Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=1, edgecolor='r', facecolor='none')
+                axs[i + 1].add_patch(rect)
 
     plt.tight_layout()
     plt.show()
