@@ -267,10 +267,8 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         inputs, mask_labels, attributes, bboxes = batch
 
         _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
-        from datasets import show_deepfashion2_image_masks_and_labels
-        show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes, _bboxes)
-
-        continue
+        # from datasets import show_deepfashion2_image_masks_and_labels
+        # show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes, _bboxes)
 
         attributes = attributes.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)

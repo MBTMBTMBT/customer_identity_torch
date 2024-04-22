@@ -1,7 +1,15 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from torch import sigmoid
+from torch.optim import Adam
+from torchvision.models.detection import RetinaNet
+from torchvision.models.detection.retinanet import RetinaNetHead
+from torchvision.ops import sigmoid_focal_loss, nms, box_iou
+from torchvision.ops.feature_pyramid_network import LastLevelP6P7
+from sklearn.metrics import f1_score, jaccard_score, average_precision_score
 
 
 def X2conv(in_channels, out_channels, inner_channels=None):
@@ -141,3 +149,182 @@ class CombinedModel(nn.Module):
 
     def unfreeze_segment_model(self):
         self.segment_model.train()
+
+
+def calc_detection_loss(class_logits, box_regression, labels, boxes):
+    classification_loss = sigmoid_focal_loss(class_logits, labels, reduction="mean")
+    reg_loss = F.smooth_l1_loss(box_regression, boxes, reduction="mean")
+    return classification_loss + reg_loss
+
+
+def calculate_mAP(detections, ground_truth_boxes, ground_truth_labels):
+    # Simplified mAP calculation without considering different IoU thresholds
+    y_true = []
+    y_scores = []
+    for class_id in np.unique(ground_truth_labels):
+        gt_indices = (ground_truth_labels == class_id)
+        gt_boxes_class = ground_truth_boxes[gt_indices]
+        # Dummy predictions: scoring system for the example
+        pred_indices = [d[2] for d in detections].index(class_id) if class_id in [d[2] for d in detections] else []
+        pred_scores_class = [d[1] for d in detections if d[2] == class_id]
+        pred_boxes_class = [d[0] for d in detections if d[2] == class_id]
+
+        # Assume every ground truth has one prediction
+        matches = [np.max(box_iou(torch.stack(pred_boxes_class), torch.stack([gt_box]))) > 0.5 for gt_box in
+                   gt_boxes_class]
+        y_true.extend([1] * len(gt_boxes_class))  # 1 for all ground truths
+        y_scores.extend([max(pred_scores_class) if match else 0 for match in matches])
+
+    return average_precision_score(y_true, y_scores)
+
+
+class IntegratedModel(nn.Module):
+    def __init__(self, num_classes, num_labels, num_detection_classes, lr=1e-4, device=torch.device('cpu')):
+        super(IntegratedModel, self).__init__()
+        self.backbone = models.resnet50(pretrained=True)  # Using ResNet50 as the shared backbone
+
+        # Modify the first conv layer if using different input size or grayscale images
+        # self.backbone.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+        self.fpn = LastLevelP6P7(2048, 256)  # FPN with extra layers P6 and P7
+
+        # RetinaNet Head setup
+        self.retinanet = RetinaNet(self.backbone, num_classes=num_detection_classes, anchor_generator=None)
+        self.retinanet.head = RetinaNetHead(in_channels=256,
+                                            num_anchors=self.retinanet.head.classification_head.num_anchors,
+                                            num_classes=num_detection_classes)
+
+        # U-Net like decoder for segmentation
+        self.up1 = Decoder(2048, 1024, 512)
+        self.up2 = Decoder(512, 512, 256)
+        self.up3 = Decoder(256, 256, 128)
+        self.up4 = Decoder(128, 64, 64)
+        self.final_conv = nn.Conv2d(64, num_classes, kernel_size=1)
+
+        # Classification head using features before the FPN
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(2048, num_labels)  # Adjust size according to the last layer of the backbone
+
+        self.optimizer = Adam(self.parameters(), lr=lr)
+        self.segmentation_loss_fn = torch.nn.CrossEntropyLoss()
+        self.classification_loss_fn = torch.nn.BCEWithLogitsLoss()
+
+        self.device = device
+        self.to(self.device)
+
+    def forward(self, x):
+        # Backbone
+        x1 = self.backbone.conv1(x)
+        x1 = self.backbone.bn1(x1)
+        x1 = self.backbone.relu(x1)
+        x1 = self.backbone.maxpool(x1)
+
+        x2 = self.backbone.layer1(x1)
+        x3 = self.backbone.layer2(x2)
+        x4 = self.backbone.layer3(x3)
+        x5 = self.backbone.layer4(x4)
+
+        # RetinaNet detection
+        features = self.fpn([x5])  # FPN needs a list of tensors from ResNet layer4
+        detection_output = self.retinanet.head(features)
+
+        # U-Net segmentation
+        x = self.up1(x4, x5)
+        x = self.up2(x3, x)
+        x = self.up3(x2, x)
+        x = self.up4(x1, x)
+        segmentation_output = self.final_conv(x)
+
+        # Classification
+        x_avg = self.avgpool(x5)
+        x_avg = torch.flatten(x_avg, 1)
+        label_output = self.fc(x_avg)
+
+        return segmentation_output, label_output, detection_output
+
+    def train_batch(self, inputs, masks, attributes, bbox_labels):
+        self.train()
+        inputs, masks, attributes = inputs.to(self.device), masks.to(self.device), attributes.to(self.device)
+        # Unpack bboxes and labels
+        bboxes, labels = zip(*[(bbox.to(self.device), label.to(self.device)) for bbox, label in bbox_labels])
+
+        self.optimizer.zero_grad()
+        segmentation_output, label_output, detection_output = self(inputs)
+
+        seg_loss = self.segmentation_loss_fn(segmentation_output, masks)
+        cls_loss = self.classification_loss_fn(label_output, attributes)
+        det_loss = calc_detection_loss(detection_output['class_logits'], detection_output['box_regression'],
+                                            torch.stack(labels), torch.stack(bboxes))
+
+        total_loss = seg_loss + cls_loss + det_loss
+        total_loss.backward()
+        self.optimizer.step()
+
+        return total_loss.item()
+
+    def eval_batch(self, inputs, masks, attributes, bbox_labels):
+        self.eval()
+        with torch.no_grad():
+            inputs, masks, attributes = inputs.to(self.device), masks.to(self.device), attributes.to(self.device)
+            # Unpacking bounding boxes and labels assuming bbox_labels is structured correctly
+            bboxes, labels = zip(*[(bbox.to(self.device), label.to(self.device)) for bbox, label in bbox_labels])
+            bboxes = torch.stack(bboxes)
+            labels = torch.cat(labels)
+
+            segmentation_output, label_output, detection_output = self(inputs)
+
+            seg_loss = self.segmentation_loss_fn(segmentation_output, masks)
+            cls_loss = self.classification_loss_fn(label_output, attributes)
+            det_loss = self.calc_detection_loss(detection_output['class_logits'], detection_output['box_regression'],
+                                                labels, bboxes)
+            total_loss = seg_loss + cls_loss + det_loss
+
+            # Calculate performance metrics assuming correct inputs
+            scores = torch.sigmoid(detection_output['scores'])
+            boxes = detection_output['boxes']
+
+            # Filter and apply NMS
+            final_detections = []
+            for class_id in torch.unique(labels):
+                indices = (labels == class_id)
+                class_scores = scores[indices]
+                class_boxes = boxes[indices]
+                high_conf_indices = class_scores > 0.5  # Confidence threshold
+                class_scores = class_scores[high_conf_indices]
+                class_boxes = class_boxes[high_conf_indices]
+
+                keep_indices = nms(class_boxes, class_scores, iou_threshold=0.5)
+                final_detections.extend((class_boxes[i], class_scores[i], class_id) for i in keep_indices)
+
+            mAP = calculate_mAP(final_detections, bboxes, labels)  # Assuming calculate_mAP is defined correctly
+            f1 = f1_score(labels.cpu().numpy(), label_output.argmax(dim=1).cpu().numpy(), average='macro')
+            iou = jaccard_score(masks.cpu().numpy(), segmentation_output.argmax(dim=1).cpu().numpy(), average='macro')
+
+        return total_loss.item(), mAP, f1, iou
+
+    def predict_frame(self, frame):
+        self.eval()
+        with torch.no_grad():
+            frame = frame.to(self.device)
+            segmentation_output, label_output, detection_output = self(frame)
+            # Convert logits to probabilities
+            scores = sigmoid(detection_output['scores'])
+            # Bounding boxes decoding (assuming `detection_output['boxes']` are already decoded)
+            boxes = detection_output['boxes']
+            labels = detection_output['labels']
+
+            # Apply confidence thresholding
+            high_conf_indices = torch.where(scores > 0.5)[0]  # Confidence threshold of 0.5
+            scores = scores[high_conf_indices]
+            boxes = boxes[high_conf_indices]
+            labels = labels[high_conf_indices]
+
+            # Non-Maximum Suppression (NMS)
+            keep_indices = nms(boxes, scores, iou_threshold=0.5)  # IoU threshold for NMS
+            final_boxes = boxes[keep_indices]
+            final_scores = scores[keep_indices]
+            final_labels = labels[keep_indices]
+
+            return final_boxes, final_scores, final_labels, segmentation_output, label_output
+
+

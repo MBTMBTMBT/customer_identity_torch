@@ -135,7 +135,6 @@ class DeepFashion2Dataset(Dataset):
 
         # Initialize mask array and bbox list
         masks = torch.zeros((len(self.categories), self.output_size[1], self.output_size[0]), dtype=torch.float32)
-        labels = torch.zeros(len(self.categories), dtype=torch.float32)
         bboxes = []
 
         # Process each item in the annotation
