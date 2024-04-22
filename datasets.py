@@ -126,7 +126,7 @@ class DeepFashion2Dataset(Dataset):
         image = Image.open(img_path).convert('RGB')
 
         # Determine the crop size based on the aspect ratio of output_size
-        crop_width, crop_height = self.get_max_crop((image.size[0], image.size[1]), self.output_size)
+        crop_width, crop_height = self.get_max_crop(image.size, self.output_size)
 
         # Load annotation
         anno_path = os.path.join(self.anno_dir, img_name.replace('.jpg', '.json'))
@@ -185,10 +185,10 @@ class DeepFashion2Dataset(Dataset):
         y2_cropped = y2 - y_offset
 
         # Scale bbox coordinates to output size
-        x1_relative = max(0, x1_cropped / crop_width * output_width)
-        y1_relative = max(0, y1_cropped / crop_height * output_height)
-        x2_relative = min(output_width, x2_cropped / crop_width * output_width)
-        y2_relative = min(output_height, y2_cropped / crop_height * output_height)
+        x1_relative = x1_cropped / crop_width
+        y1_relative = y1_cropped / crop_height
+        x2_relative = x2_cropped / crop_width
+        y2_relative = y2_cropped / crop_height
 
         return [x1_relative, y1_relative, x2_relative, y2_relative]
 
@@ -289,6 +289,7 @@ def show_deepfashion2_image_masks_and_labels(image, masks, labels, bboxes):
 
     # Convert the image tensor to PIL Image for display
     image_pil = transforms.ToPILImage()(image)
+    img_width, img_height = image_pil.size
 
     # Set up the plot
     num_subplots = len(labels) + 1
@@ -301,17 +302,23 @@ def show_deepfashion2_image_masks_and_labels(image, masks, labels, bboxes):
 
     # Plot each mask
     for i, mask in enumerate(masks):
-        axs[i + 1].imshow(image_pil, alpha=0.7)  # Show the underlying image
-        axs[i + 1].imshow(mask, cmap='gray', alpha=0.3, interpolation='none')  # Overlay the mask
+        axs[i + 1].imshow(image_pil, alpha=0.5)  # Show the underlying image
+        axs[i + 1].imshow(mask, cmap='gray', alpha=0.5, interpolation='none')  # Overlay the mask
         axs[i + 1].set_title(f'{categories[i]}: {"1" if labels[i] == 1.0 else "0"}')
         axs[i + 1].axis('off')
 
         # Add bounding boxes to the plot
         for cat_id, bbox in bboxes:
             if cat_id == i:
-                # Bbox format: [x1_relative, y1_relative, x2_relative, y2_relative]
+                # Convert normalized coordinates to pixel coordinates
                 x1, y1, x2, y2 = bbox
-                rect = Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=1, edgecolor='r', facecolor='none')
+                x1_px = max(0, x1 * img_width)
+                y1_px = max(0, y1 * img_height)
+                x2_px = min(img_width, x2 * img_width)
+                y2_px = min(img_height, y2 * img_height)
+                rect_width = x2_px - x1_px
+                rect_height = y2_px - y1_px
+                rect = Rectangle((x1_px, y1_px), rect_width, rect_height, linewidth=1, edgecolor='r', facecolor='none')
                 axs[i + 1].add_patch(rect)
 
     plt.tight_layout()
