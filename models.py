@@ -6,6 +6,7 @@ import torchvision.models as models
 from torch import sigmoid
 from torch.optim import Adam
 from torchvision.models.detection import RetinaNet
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.models.detection.retinanet import RetinaNetHead
 from torchvision.ops import sigmoid_focal_loss, nms, box_iou
 from torchvision.ops.feature_pyramid_network import LastLevelP6P7
@@ -181,7 +182,7 @@ def calculate_mAP(detections, ground_truth_boxes, ground_truth_labels):
 class IntegratedModel(nn.Module):
     def __init__(self, num_classes, num_labels, num_detection_classes, device=torch.device('cpu')):
         super(IntegratedModel, self).__init__()
-        self.backbone = models.resnet50(pretrained=True)  # Using ResNet50 as the shared backbone
+        self.backbone = resnet_fpn_backbone('resnet50', pretrained=True)  # Using ResNet50 as the shared backbone
 
         # Modify the first conv layer if using different input size or grayscale images
         # self.backbone.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -189,7 +190,7 @@ class IntegratedModel(nn.Module):
         self.fpn = LastLevelP6P7(2048, 256)  # FPN with extra layers P6 and P7
 
         # RetinaNet Head setup
-        self.retinanet = RetinaNet(self.backbone, num_classes=num_detection_classes, anchor_generator=None)
+        self.retinanet = RetinaNet(self.backbone, num_classes=num_detection_classes,)
         self.retinanet.head = RetinaNetHead(in_channels=256,
                                             num_anchors=self.retinanet.head.classification_head.num_anchors,
                                             num_classes=num_detection_classes)
@@ -249,13 +250,13 @@ class IntegratedModel(nn.Module):
         all_bboxes = []
         all_labels = []
         for bbox_label in bbox_labels:
-            bboxes, labels = zip(*[(bbox.to(self.device), label.to(self.device)) for bbox, label in bbox_label])
+            labels, bboxes = zip(*[(torch.tensor(label).to(self.device), torch.tensor(bbox).to(self.device)) for label, bbox in bbox_label])
             all_bboxes.extend(bboxes)
             all_labels.extend(labels)
 
         # Convert lists to tensors; ensure your dataset structure allows this concatenation
         bboxes_tensor = torch.cat(all_bboxes, dim=0)
-        labels_tensor = torch.cat(all_labels, dim=0)
+        labels_tensor = torch.cat(all_labels)
 
         optimizer.zero_grad()
         segmentation_output, label_output, detection_output = self(inputs)
@@ -298,7 +299,7 @@ class IntegratedModel(nn.Module):
         with torch.no_grad():
             inputs, masks, attributes = inputs.to(self.device), masks.to(self.device), attributes.to(self.device)
             # Unpacking bounding boxes and labels assuming bbox_labels is structured correctly
-            bboxes, labels = zip(*[(bbox.to(self.device), label.to(self.device)) for bbox, label in bbox_labels])
+            labels, bboxes = zip(*[(torch.tensor(label).to(self.device), torch.tensor(bbox).to(self.device)) for label, bbox in bbox_label])
             bboxes = torch.stack(bboxes)
             labels = torch.cat(labels)
 
