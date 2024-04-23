@@ -962,6 +962,68 @@ class AugmentedDataset(Dataset):
             return 0
 
 
+class AugmentedDeepFashion2Dataset(AugmentedDataset):
+    def __init__(self, dataset_source, flip_prob=0.5, crop_ratio=(0.8, 0.8), scale_factor=(0.5, 2),
+                 output_size=(512, 512), noise_level=(0, 10), blur_radius=(0, 2), brightness_factor=(0.75, 1.25),
+                 pil=False, seed=None):
+        super().__init__(dataset_source, flip_prob, crop_ratio, scale_factor, output_size,
+                         noise_level, blur_radius, brightness_factor, pil, seed)
+
+    def __getitem__(self, idx):
+        # Retrieve data from the source dataset
+        image_tensor, masks, labels, bboxes = self.source.__getitem__(idx)
+
+        # Generate transform parameters for this sample
+        transform_params = self._get_transform_params()
+
+        # Apply transformations to the image
+        image = transforms.ToPILImage()(image_tensor)
+        transformed_image, _ = self._apply_image_transforms(image_tensor, transform_params)
+
+        # Adjust bounding boxes
+        transformed_bboxes = [self._adjust_bbox(bbox, transform_params, image.size) for bbox in bboxes]
+
+        # Convert transformed image back to tensor
+        transformed_image_tensor = transforms.ToTensor()(transformed_image)
+
+        # Transform masks if they exist
+        transformed_masks = torch.stack(
+            [transforms.ToTensor()(self._apply_common_transforms(m, transform_params)) for m in
+             masks], dim=0).squeeze(1)
+
+        return transformed_image_tensor, transformed_masks, labels, transformed_bboxes
+
+    def _adjust_bbox(self, bbox, params, orig_size):
+        # Extract bounding box coordinates
+        category_id, (x1, y1, x2, y2) = bbox
+
+        # Calculate crop dimensions
+        crop_width = params['crop_width_ratio'] * orig_size[0]
+        crop_height = params['crop_height_ratio'] * orig_size[1]
+        crop_x1 = params['crop_left_ratio'] * orig_size[0]
+        crop_y1 = params['crop_top_ratio'] * orig_size[1]
+
+        # Adjust bounding box coordinates to cropped image
+        x1_cropped = (x1 * orig_size[0] - crop_x1)
+        y1_cropped = (y1 * orig_size[1] - crop_y1)
+        x2_cropped = (x2 * orig_size[0] - crop_x1)
+        y2_cropped = (y2 * orig_size[1] - crop_y1)
+
+        # Normalize to the cropped size to get relative coordinates
+        x1_relative = x1_cropped / crop_width
+        y1_relative = y1_cropped / crop_height
+        x2_relative = x2_cropped / crop_width
+        y2_relative = y2_cropped / crop_height
+
+        # Apply flip if necessary
+        if params['do_flip']:
+            x1_relative = 1 - x1_relative
+            x2_relative = 1 - x2_relative
+            x1_relative, x2_relative = x2_relative, x1_relative  # Swap values as flip changes their positions
+
+        return (category_id, (x1_relative, y1_relative, x2_relative, y2_relative))
+
+
 def show_image(image, title=""):
     """Display an image"""
     plt.imshow(image.permute(1, 2, 0).numpy().clip(0, 1))
