@@ -4,10 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from torch import sigmoid
-from torch.optim import Adam
 from torchvision.models.detection import RetinaNet
+from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
-from torchvision.models.detection.retinanet import RetinaNetHead
 from torchvision.ops import sigmoid_focal_loss, nms, box_iou
 from torchvision.ops.feature_pyramid_network import LastLevelP6P7
 from sklearn.metrics import f1_score, jaccard_score, average_precision_score
@@ -179,184 +178,198 @@ def calculate_mAP(detections, ground_truth_boxes, ground_truth_labels):
     return average_precision_score(y_true, y_scores)
 
 
-class IntegratedModel(nn.Module):
-    def __init__(self, num_classes, num_labels, num_detection_classes, device=torch.device('cpu')):
-        super(IntegratedModel, self).__init__()
-        self.backbone = resnet_fpn_backbone('resnet50', pretrained=True)  # Using ResNet50 as the shared backbone
-
-        # Modify the first conv layer if using different input size or grayscale images
-        # self.backbone.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-        self.fpn = LastLevelP6P7(2048, 256)  # FPN with extra layers P6 and P7
-
-        # RetinaNet Head setup
-        self.retinanet = RetinaNet(self.backbone, num_classes=num_detection_classes,)
-        self.retinanet.head = RetinaNetHead(in_channels=256,
-                                            num_anchors=self.retinanet.head.classification_head.num_anchors,
-                                            num_classes=num_detection_classes)
-
-        # U-Net like decoder for segmentation
-        self.up1 = Decoder(2048, 1024, 512)
-        self.up2 = Decoder(512, 512, 256)
-        self.up3 = Decoder(256, 256, 128)
-        self.up4 = Decoder(128, 64, 64)
-        self.final_conv = nn.Conv2d(64, num_classes, kernel_size=1)
-
-        # Classification head using features before the FPN
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(2048, num_labels)  # Adjust size according to the last layer of the backbone
-
-        self.segmentation_loss_fn = torch.nn.CrossEntropyLoss()
-        self.classification_loss_fn = torch.nn.BCEWithLogitsLoss()
-
-        self.device = device
-        self.to(self.device)
-
-    def forward(self, x):
-        # Backbone
-        x1 = self.backbone.conv1(x)
-        x1 = self.backbone.bn1(x1)
-        x1 = self.backbone.relu(x1)
-        x1 = self.backbone.maxpool(x1)
-
-        x2 = self.backbone.layer1(x1)
-        x3 = self.backbone.layer2(x2)
-        x4 = self.backbone.layer3(x3)
-        x5 = self.backbone.layer4(x4)
-
-        # RetinaNet detection
-        features = self.fpn([x5])  # FPN needs a list of tensors from ResNet layer4
-        detection_output = self.retinanet.head(features)
-
-        # U-Net segmentation
-        x = self.up1(x4, x5)
-        x = self.up2(x3, x)
-        x = self.up3(x2, x)
-        x = self.up4(x1, x)
-        segmentation_output = self.final_conv(x)
-
-        # Classification
-        x_avg = self.avgpool(x5)
-        x_avg = torch.flatten(x_avg, 1)
-        label_output = self.fc(x_avg)
-
-        return segmentation_output, label_output, detection_output
-
-    def train_batch(self, inputs, masks, attributes, bbox_labels, optimizer):
-        self.train()
-        inputs, masks, attributes = inputs.to(self.device), masks.to(self.device), attributes.to(self.device)
-
-        # Unpack bboxes and labels
-        all_bboxes = []
-        all_labels = []
-        for bbox_label in bbox_labels:
-            labels, bboxes = zip(*[(torch.tensor(label).to(self.device), torch.tensor(bbox).to(self.device)) for label, bbox in bbox_label])
-            all_bboxes.extend(bboxes)
-            all_labels.extend(labels)
-
-        # Convert lists to tensors; ensure your dataset structure allows this concatenation
-        bboxes_tensor = torch.cat(all_bboxes, dim=0)
-        labels_tensor = torch.cat(all_labels)
-
-        optimizer.zero_grad()
-        segmentation_output, label_output, detection_output = self(inputs)
-
-        seg_loss = self.segmentation_loss_fn(segmentation_output, masks)
-        cls_loss = self.classification_loss_fn(label_output, attributes)
-        det_loss = calc_detection_loss(detection_output['class_logits'], detection_output['box_regression'],
-                                       labels_tensor, bboxes_tensor)
-
-        total_loss = seg_loss + cls_loss + det_loss
-        total_loss.backward()
-        optimizer.step()
-
-        # Post-process outputs for metric calculation; this part is computationally expensive
-        scores = torch.sigmoid(detection_output['scores'])
-        boxes = detection_output['boxes']
-        labels = detection_output['labels']
-
-        final_detections = []
-        for class_id in torch.unique(labels_tensor):
-            indices = (labels == class_id)
-            class_scores = scores[indices]
-            class_boxes = boxes[indices]
-            high_conf_indices = class_scores > 0.5  # Confidence threshold
-            class_scores = class_scores[high_conf_indices]
-            class_boxes = class_boxes[high_conf_indices]
-
-            keep_indices = nms(class_boxes, class_scores, iou_threshold=0.5)
-            final_detections.extend((class_boxes[i], class_scores[i], class_id) for i in keep_indices)
-
-        # Simulated mAP calculation
-        mAP = calculate_mAP(final_detections, bboxes_tensor, labels_tensor)
-        f1 = f1_score(labels_tensor.cpu().numpy(), label_output.argmax(dim=1).cpu().numpy(), average='macro')
-        iou = jaccard_score(masks.cpu().numpy(), segmentation_output.argmax(dim=1).cpu().numpy(), average='macro')
-
-        return total_loss.item(), seg_loss.item(), cls_loss.item(), det_loss.item(), mAP, f1, iou
-
-    def eval_batch(self, inputs, masks, attributes, bbox_labels):
-        self.eval()
-        with torch.no_grad():
-            inputs, masks, attributes = inputs.to(self.device), masks.to(self.device), attributes.to(self.device)
-            # Unpacking bounding boxes and labels assuming bbox_labels is structured correctly
-            labels, bboxes = zip(*[(torch.tensor(label).to(self.device), torch.tensor(bbox).to(self.device)) for label, bbox in bbox_label])
-            bboxes = torch.stack(bboxes)
-            labels = torch.cat(labels)
-
-            segmentation_output, label_output, detection_output = self(inputs)
-
-            seg_loss = self.segmentation_loss_fn(segmentation_output, masks)
-            cls_loss = self.classification_loss_fn(label_output, attributes)
-            det_loss = self.calc_detection_loss(detection_output['class_logits'], detection_output['box_regression'],
-                                                labels, bboxes)
-            total_loss = seg_loss + cls_loss + det_loss
-
-            # Calculate performance metrics assuming correct inputs
-            scores = torch.sigmoid(detection_output['scores'])
-            boxes = detection_output['boxes']
-
-            # Filter and apply NMS
-            final_detections = []
-            for class_id in torch.unique(labels):
-                indices = (labels == class_id)
-                class_scores = scores[indices]
-                class_boxes = boxes[indices]
-                high_conf_indices = class_scores > 0.5  # Confidence threshold
-                class_scores = class_scores[high_conf_indices]
-                class_boxes = class_boxes[high_conf_indices]
-
-                keep_indices = nms(class_boxes, class_scores, iou_threshold=0.5)
-                final_detections.extend((class_boxes[i], class_scores[i], class_id) for i in keep_indices)
-
-            mAP = calculate_mAP(final_detections, bboxes, labels)  # Assuming calculate_mAP is defined correctly
-            f1 = f1_score(labels.cpu().numpy(), label_output.argmax(dim=1).cpu().numpy(), average='macro')
-            iou = jaccard_score(masks.cpu().numpy(), segmentation_output.argmax(dim=1).cpu().numpy(), average='macro')
-
-        return total_loss.item(), seg_loss.item(), cls_loss.item(), det_loss.item(), mAP, f1, iou
-
-    def predict_frame(self, frame):
-        self.eval()
-        with torch.no_grad():
-            frame = frame.to(self.device)
-            segmentation_output, label_output, detection_output = self(frame)
-            # Convert logits to probabilities
-            scores = sigmoid(detection_output['scores'])
-            # Bounding boxes decoding (assuming `detection_output['boxes']` are already decoded)
-            boxes = detection_output['boxes']
-            labels = detection_output['labels']
-
-            # Apply confidence thresholding
-            high_conf_indices = torch.where(scores > 0.5)[0]  # Confidence threshold of 0.5
-            scores = scores[high_conf_indices]
-            boxes = boxes[high_conf_indices]
-            labels = labels[high_conf_indices]
-
-            # Non-Maximum Suppression (NMS)
-            keep_indices = nms(boxes, scores, iou_threshold=0.5)  # IoU threshold for NMS
-            final_boxes = boxes[keep_indices]
-            final_scores = scores[keep_indices]
-            final_labels = labels[keep_indices]
-
-            return final_boxes, final_scores, final_labels, segmentation_output, label_output
-
+# class IntegratedModel(nn.Module):
+#     def __init__(self, num_classes, num_labels, num_detection_classes, device=torch.device('cpu')):
+#         super(IntegratedModel, self).__init__()
+#         # Setup the backbone with FPN and last level enhancements
+#         self.backbone = resnet_fpn_backbone('resnet50', pretrained=True, extra_blocks=LastLevelP6P7(256, 256))
+#
+#         # Define anchor generator with specific sizes and aspect ratios
+#         anchor_generator = AnchorGenerator(
+#             sizes=((32,), (64,), (128,), (256,), (512,), (512,)),  # Tuple of tuples
+#             aspect_ratios=((0.5, 1.0, 2.0),) * 6  # Same aspect ratios for each feature map scale
+#         )
+#
+#         # RetinaNet setup using the backbone directly
+#         self.retinanet = RetinaNet(self.backbone, num_classes=num_detection_classes, anchor_generator=anchor_generator)
+#
+#         # U-Net like decoder for segmentation
+#         self.up0 = Decoder(2048, 2048, 2048)
+#         self.up1 = Decoder(2048, 1024, 512)
+#         self.up2 = Decoder(512, 512, 256)
+#         self.up3 = Decoder(256, 256, 128)
+#         self.up4 = Decoder(128, 64, 64)
+#         self.final_conv = nn.Conv2d(64, num_classes, kernel_size=1)
+#
+#         # Classification head using features before the FPN
+#         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+#         self.fc = nn.Linear(2048, num_labels)  # Adjust size according to the last layer of the backbone
+#
+#         self.segmentation_loss_fn = torch.nn.CrossEntropyLoss()
+#         self.classification_loss_fn = torch.nn.BCEWithLogitsLoss()
+#
+#         self.device = device
+#         self.to(self.device)
+#
+#     def forward(self, x, targets=None):
+#         # Backbone through FPN which gives a dict of feature maps
+#         features = self.backbone(x)
+#
+#         # Check if training or evaluation mode
+#         if self.training:
+#             assert targets is not None, "Targets should not be None when in training mode"
+#             detection_output = self.retinanet(x, targets)  # Pass targets during training
+#         else:
+#             detection_output = self.retinanet(x)  # In eval mode, no targets needed
+#
+#         # Extract feature maps for segmentation (assumes FPN outputs are ordered or keyed consistently)
+#         x0, x1, x2, x3, x4, x5 = [features[k] for k in sorted(features.keys())]
+#
+#         # U-Net segmentation
+#         x = self.up0(x0, self.up1(x4, x5))
+#         x = self.up2(x3, x)
+#         x = self.up3(x2, x)
+#         x = self.up4(x1, x)
+#         segmentation_output = self.final_conv(x)
+#
+#         # Classification
+#         x_avg = self.avgpool(x5)  # Use the deepest feature map for classification
+#         x_avg = torch.flatten(x_avg, 1)
+#         label_output = self.fc(x_avg)
+#
+#         return segmentation_output, label_output, detection_output
+#
+#     def prepare_targets(self, bbox_labels):
+#         targets = []
+#         for image_annotations in bbox_labels:  # Assuming bbox_labels is a list of lists (one per image)
+#             bboxes = [torch.tensor(bbox).float().to(self.device) for _, bbox in image_annotations]
+#             labels = [torch.tensor(label).long().to(self.device) for label, _ in image_annotations]
+#
+#             # Handle the case where there are no annotations for an image
+#             if not bboxes:
+#                 bboxes = torch.empty((0, 4), dtype=torch.float, device=self.device)
+#             else:
+#                 bboxes = torch.stack(bboxes).to(self.device)
+#
+#             if not labels:
+#                 labels = torch.empty((0,), dtype=torch.long, device=self.device)
+#             else:
+#                 labels = torch.tensor(labels).to(self.device)  # Convert list of tensors to a single tensor
+#
+#             targets.append({'boxes': bboxes, 'labels': labels})
+#
+#         return targets
+#
+#     def train_batch(self, inputs, masks, attributes, bbox_labels, optimizer):
+#         self.train()
+#         inputs, masks, attributes = inputs.to(self.device), masks.to(self.device), attributes.to(self.device)
+#
+#         # Prepare targets for detection
+#         targets = self.prepare_targets(bbox_labels)
+#
+#         optimizer.zero_grad()
+#
+#         # Forward pass
+#         segmentation_output, label_output, loss_dict = self(inputs, targets=targets)
+#
+#         # Compute losses for segmentation and classification
+#         seg_losses = [self.segmentation_loss_fn(seg_out, mask) for seg_out, mask in zip(segmentation_output, masks)]
+#         cls_losses = [self.classification_loss_fn(label_out, attr) for label_out, attr in zip(label_output, attributes)]
+#         det_loss = sum(loss for loss in loss_dict.values())
+#
+#         # Sum and average the losses
+#         total_loss = sum(seg_losses) / len(seg_losses) + sum(cls_losses) / len(cls_losses) + det_loss
+#         total_loss.backward()
+#         optimizer.step()
+#
+#         # Calculate metrics if required
+#         self.eval()
+#         with torch.no_grad():
+#             mAP, f1, iou = self.calculate_metrics(inputs, masks, bbox_labels)
+#         self.train()
+#
+#         return total_loss.item(), sum(seg_losses) / len(seg_losses).item(), sum(cls_losses) / len(
+#             cls_losses).item(), det_loss.item(), mAP, f1, iou
+#
+#     def calculate_metrics(self, inputs, masks, bbox_labels):
+#         # Since we need predictions for metrics, we temporarily switch to evaluation mode
+#         segmentation_output, label_output, detection_output = self(inputs)  # No targets passed
+#
+#         # Calculate mAP, F1, and IoU for each image
+#         mAP_scores, f1_scores, iou_scores = [], [], []
+#         for det_out, label_out, seg_out, mask in zip(detection_output, label_output, segmentation_output, masks):
+#             # Extract detection outputs
+#             pred_boxes = det_out['boxes']
+#             pred_scores = torch.sigmoid(det_out['scores'])
+#             pred_labels = det_out['labels']
+#
+#             # Apply NMS
+#             keep = nms(pred_boxes, pred_scores, 0.5)
+#             pred_boxes = pred_boxes[keep]
+#             pred_scores = pred_scores[keep]
+#             pred_labels = pred_labels[keep]
+#
+#             # Calculate mAP, F1, IoU using your preferred methods or library functions
+#             mAP_scores.append(calculate_mAP(pred_boxes, pred_labels, pred_scores, bbox_labels))
+#             f1_scores.append(f1_score(masks.cpu().numpy(), seg_out.argmax(dim=1).cpu().numpy(), average='macro'))
+#             iou_scores.append(jaccard_score(mask.cpu().numpy(), seg_out.argmax(dim=1).cpu().numpy(), average='macro'))
+#
+#         # Average the metrics across the batch
+#         avg_mAP = sum(mAP_scores) / len(mAP_scores)
+#         avg_f1 = sum(f1_scores) / len(f1_scores)
+#         avg_iou = sum(iou_scores) / len(iou_scores)
+#
+#         return avg_mAP, avg_f1, avg_iou
+#
+#     def eval_batch(self, inputs, masks, attributes, bbox_labels):
+#         self.eval()
+#         with torch.no_grad():
+#             inputs, masks, attributes = inputs.to(self.device), masks.to(self.device), attributes.to(self.device)
+#
+#             # Prepare targets for detection
+#             targets = []
+#             for bbox_label in bbox_labels:
+#                 bboxes, labels = zip(
+#                     *[(torch.tensor(bbox).float().to(self.device), torch.tensor(label).long().to(self.device)) for
+#                       label, bbox in bbox_label])
+#                 targets.append({'boxes': torch.stack(bboxes), 'labels': torch.stack(labels)})
+#
+#             segmentation_output, label_output, detection_output = self(inputs, targets=targets)
+#
+#             seg_loss = self.segmentation_loss_fn(segmentation_output, masks)
+#             cls_loss = self.classification_loss_fn(label_output, attributes)
+#             det_loss = sum(loss for loss in detection_output.values())
+#
+#             # Use the shared function to calculate metrics
+#             avg_mAP, avg_f1, avg_iou = self.calculate_metrics(inputs, masks, bbox_labels)
+#
+#             total_loss = seg_loss + cls_loss + det_loss
+#
+#             return total_loss.item(), seg_loss.item(), cls_loss.item(), det_loss.item(), avg_mAP, avg_f1, avg_iou
+#
+#     def predict_frame(self, frame):
+#         self.eval()
+#         with torch.no_grad():
+#             frame = frame.to(self.device)
+#             segmentation_output, label_output, detection_output = self(frame)
+#             # Convert logits to probabilities
+#             scores = sigmoid(detection_output['scores'])
+#             # Bounding boxes decoding (assuming `detection_output['boxes']` are already decoded)
+#             boxes = detection_output['boxes']
+#             labels = detection_output['labels']
+#
+#             # Apply confidence thresholding
+#             high_conf_indices = torch.where(scores > 0.5)[0]  # Confidence threshold of 0.5
+#             scores = scores[high_conf_indices]
+#             boxes = boxes[high_conf_indices]
+#             labels = labels[high_conf_indices]
+#
+#             # Non-Maximum Suppression (NMS)
+#             keep_indices = nms(boxes, scores, iou_threshold=0.5)  # IoU threshold for NMS
+#             final_boxes = boxes[keep_indices]
+#             final_scores = scores[keep_indices]
+#             final_labels = labels[keep_indices]
+#
+#             return final_boxes, final_scores, final_labels, segmentation_output, label_output
+#
 
