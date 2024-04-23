@@ -179,7 +179,7 @@ def calculate_mAP(detections, ground_truth_boxes, ground_truth_labels):
 
 
 class IntegratedModel(nn.Module):
-    def __init__(self, num_classes, num_labels, num_detection_classes, lr=1e-4, device=torch.device('cpu')):
+    def __init__(self, num_classes, num_labels, num_detection_classes, device=torch.device('cpu')):
         super(IntegratedModel, self).__init__()
         self.backbone = models.resnet50(pretrained=True)  # Using ResNet50 as the shared backbone
 
@@ -205,7 +205,6 @@ class IntegratedModel(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(2048, num_labels)  # Adjust size according to the last layer of the backbone
 
-        self.optimizer = Adam(self.parameters(), lr=lr)
         self.segmentation_loss_fn = torch.nn.CrossEntropyLoss()
         self.classification_loss_fn = torch.nn.BCEWithLogitsLoss()
 
@@ -242,25 +241,57 @@ class IntegratedModel(nn.Module):
 
         return segmentation_output, label_output, detection_output
 
-    def train_batch(self, inputs, masks, attributes, bbox_labels):
+    def train_batch(self, inputs, masks, attributes, bbox_labels, optimizer):
         self.train()
         inputs, masks, attributes = inputs.to(self.device), masks.to(self.device), attributes.to(self.device)
-        # Unpack bboxes and labels
-        bboxes, labels = zip(*[(bbox.to(self.device), label.to(self.device)) for bbox, label in bbox_labels])
 
-        self.optimizer.zero_grad()
+        # Unpack bboxes and labels
+        all_bboxes = []
+        all_labels = []
+        for bbox_label in bbox_labels:
+            bboxes, labels = zip(*[(bbox.to(self.device), label.to(self.device)) for bbox, label in bbox_label])
+            all_bboxes.extend(bboxes)
+            all_labels.extend(labels)
+
+        # Convert lists to tensors; ensure your dataset structure allows this concatenation
+        bboxes_tensor = torch.cat(all_bboxes, dim=0)
+        labels_tensor = torch.cat(all_labels, dim=0)
+
+        optimizer.zero_grad()
         segmentation_output, label_output, detection_output = self(inputs)
 
         seg_loss = self.segmentation_loss_fn(segmentation_output, masks)
         cls_loss = self.classification_loss_fn(label_output, attributes)
         det_loss = calc_detection_loss(detection_output['class_logits'], detection_output['box_regression'],
-                                            torch.stack(labels), torch.stack(bboxes))
+                                       labels_tensor, bboxes_tensor)
 
         total_loss = seg_loss + cls_loss + det_loss
         total_loss.backward()
-        self.optimizer.step()
+        optimizer.step()
 
-        return total_loss.item()
+        # Post-process outputs for metric calculation; this part is computationally expensive
+        scores = torch.sigmoid(detection_output['scores'])
+        boxes = detection_output['boxes']
+        labels = detection_output['labels']
+
+        final_detections = []
+        for class_id in torch.unique(labels_tensor):
+            indices = (labels == class_id)
+            class_scores = scores[indices]
+            class_boxes = boxes[indices]
+            high_conf_indices = class_scores > 0.5  # Confidence threshold
+            class_scores = class_scores[high_conf_indices]
+            class_boxes = class_boxes[high_conf_indices]
+
+            keep_indices = nms(class_boxes, class_scores, iou_threshold=0.5)
+            final_detections.extend((class_boxes[i], class_scores[i], class_id) for i in keep_indices)
+
+        # Simulated mAP calculation
+        mAP = calculate_mAP(final_detections, bboxes_tensor, labels_tensor)
+        f1 = f1_score(labels_tensor.cpu().numpy(), label_output.argmax(dim=1).cpu().numpy(), average='macro')
+        iou = jaccard_score(masks.cpu().numpy(), segmentation_output.argmax(dim=1).cpu().numpy(), average='macro')
+
+        return total_loss.item(), seg_loss.item(), cls_loss.item(), det_loss.item(), mAP, f1, iou
 
     def eval_batch(self, inputs, masks, attributes, bbox_labels):
         self.eval()
@@ -300,7 +331,7 @@ class IntegratedModel(nn.Module):
             f1 = f1_score(labels.cpu().numpy(), label_output.argmax(dim=1).cpu().numpy(), average='macro')
             iou = jaccard_score(masks.cpu().numpy(), segmentation_output.argmax(dim=1).cpu().numpy(), average='macro')
 
-        return total_loss.item(), mAP, f1, iou
+        return total_loss.item(), seg_loss.item(), cls_loss.item(), det_loss.item(), mAP, f1, iou
 
     def predict_frame(self, frame):
         self.eval()

@@ -255,13 +255,17 @@ def test(model, test_loader, criterion_mask, criterion_pred, epoch, device):
     return test_loss, mask_test_loss, pred_test_loss  # , rg_test_loss
 
 
-def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode='mix', tb_writer=None, counter=-1):
+def train_DeepFashion2(model, optimizer, train_loader, scale_range, epoch, device, mode='mix', tb_writer=None, counter=-1):
     assert mode in modes
-    model.train()
-    running_accuracy = 0.0
+    model.train()#
     running_loss = 0.0
     mask_running_loss = 0.0
     pred_running_loss = 0.0
+    det_running_loss = 0.0
+    running_mAP = 0.0
+    running_f1 = 0.0
+    running_iou = 0.0
+
     progress_bar = tqdm(train_loader, desc=f'Training Epoch {epoch}')
     for i, batch in enumerate(progress_bar):
         inputs, mask_labels, attributes, bboxes = batch
@@ -278,68 +282,37 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
                                                                                                      scale_factor)
 
-        optimizer.zero_grad()
+        loss, loss_mask, loss_pred, loss_det, mAP, f1, iou = model.train_batch(inputs, mask_labels, attributes, bboxes, optimizer)
 
-        pred_masks, pred_classes = model(inputs)
-        mask_loss = criterion_mask(pred_masks, mask_labels)
-        # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
-        pred_loss = criterion_pred(pred_classes, attributes)
-        loss = mask_loss + pred_loss
+        running_loss += loss
+        mask_running_loss += loss_mask
+        pred_running_loss += loss_pred
+        det_running_loss += loss_det
+        running_mAP += mAP
+        running_f1 += f1
+        running_iou += iou
 
-        # Assume `predictions` and `classes` are your model's predictions and true class labels respectively
-        predictions = pred_classes > 0.5
-        # Create a mask for where the true class labels are 1 (positive class)
-        positive_class_mask = (attributes == 1)
-        # Select predictions and true labels where true labels are 1
-        positive_predictions = predictions[positive_class_mask]
-        positive_true_labels = attributes[positive_class_mask]
-        # Calculate correct predictions for positive class
-        correct_positives = (positive_predictions == positive_true_labels).float()
-        # Calculate accuracy for positive class
-        if correct_positives.numel() > 0:  # Check to make sure we have positive samples
-            positive_accuracy = correct_positives.mean()
-        else:
-            positive_accuracy = torch.tensor(0.0)  # If no positive samples, set accuracy to 0
-        # Now `positive_accuracy` will be the accuracy only for the class with label 1
-        accuracy = positive_accuracy
-
-        if mode == 'seg':
-            # print('Training segmentation only.')
-            model.unfreeze_segment_model()
-            mask_loss.backward()
-        elif mode == 'pred':
-            # print('Training classification only.')
-            model.freeze_segment_model()
-            pred_loss.backward()
-        else:
-            # print('Training whole network.')
-            model.unfreeze_segment_model()
-            loss.backward()
-
-        optimizer.step()
-
-        running_loss += loss.item()
-        mask_running_loss += mask_loss.item()
-        pred_running_loss += pred_loss.item()
-        # cl_running_loss += cl_loss.item()
-        # rg_running_loss += rg_loss.item()
-
-        running_accuracy += accuracy
         progress_bar.set_description(
-            f'Train E{epoch}: ML:{mask_loss.item():.4f} PL:{pred_loss.item():.3f} Acc:{accuracy:.2f}')
+            f'TE{epoch}: ML:{loss_mask:.3f} PL:{loss_pred.item():.3f} BL:{loss_det:.3f} mAP:{mAP:.2f} f1:{f1:.2f} iou:{iou:.2f}')
         if tb_writer is not None and counter > -1:
             tb_writer.add_scalar('Loss/Train', loss.item(), counter)
-            tb_writer.add_scalar('LossMask/Train', mask_loss.item(), counter)
-            tb_writer.add_scalar('LossPred/Train', pred_loss.item(), counter)
-            tb_writer.add_scalar('Accuracy/Train', accuracy, counter)
+            tb_writer.add_scalar('LossMask/Train', loss_mask, counter)
+            tb_writer.add_scalar('LossPred/Train', loss_pred, counter)
+            tb_writer.add_scalar('LossBBox/Train', loss_det, counter)
+            tb_writer.add_scalar('MAP/Train', mAP, counter)
+            tb_writer.add_scalar('F1/Train', f1, counter)
+            tb_writer.add_scalar('IOU/Train', iou, counter)
         if counter > -1:
             counter += 1
 
     train_loss = running_loss / len(train_loader)
     mask_train_loss = mask_running_loss / len(train_loader)
     pred_train_loss = pred_running_loss / len(train_loader)
+    avrg_mAP = running_mAP
+    avrg_f1 += f1
+    avrg_iou += iou
     progress_bar.set_description(
-        f'Train E{epoch}: ML:{mask_train_loss:.4f} PL:{pred_train_loss:.3f} Acc:{running_accuracy / len(train_loader):.2f}')
+        f'TE{epoch}: ML:{mask_running_loss:.3f} PL:{pred_running_loss:.3f} BL:{det_running_loss:.3f} mAP:{running_mAP:.2f} f1:{running_f1:.2f} iou:{running_iou:.2f}')
     if counter >= -1:
         return train_loss, mask_train_loss, pred_train_loss, running_accuracy / len(train_loader), counter
     return train_loss, mask_train_loss, pred_train_loss, running_accuracy / len(train_loader)
