@@ -1,3 +1,4 @@
+import torch
 from tqdm import tqdm
 import random
 
@@ -53,7 +54,7 @@ def _scale_images_uniformly(images: torch.Tensor, scale_factor: float):
 modes = ['seg', 'pred', 'mix']
 
 
-def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode='mix'):
+def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode='mix', tb_writer=None, counter=-1):
     assert mode in modes
     model.train()
     running_accuracy = 0.0
@@ -63,6 +64,11 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
     progress_bar = tqdm(train_loader, desc=f'Training Epoch {epoch}')
     for i, batch in enumerate(progress_bar):
         inputs, mask_labels, attributes, = batch
+
+        _input, _mask_labels, _attributes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy()
+
+        # from datasets import show_deepfashion2_image_masks_and_labels
+        # show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes)
 
         attributes = attributes.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
@@ -120,12 +126,23 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
 
         running_accuracy += accuracy
         progress_bar.set_description(
-            f'Train E{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item():.3f} Acc:{accuracy:.2f}')
+            f'Train E{epoch}: ML:{mask_loss.item():.4f} PL:{pred_loss.item():.3f} Acc:{accuracy:.2f}')
+        if tb_writer is not None and counter > -1:
+            tb_writer.add_scalar('Loss/Train', loss.item(), counter)
+            tb_writer.add_scalar('LossMask/Train', mask_loss.item(), counter)
+            tb_writer.add_scalar('LossPred/Train', pred_loss.item(), counter)
+            tb_writer.add_scalar('Accuracy/Train', accuracy, counter)
+        if counter > -1:
+            counter += 1
 
     train_loss = running_loss / len(train_loader)
     mask_train_loss = mask_running_loss / len(train_loader)
     pred_train_loss = pred_running_loss / len(train_loader)
-    return train_loss, mask_train_loss, pred_train_loss
+    progress_bar.set_description(
+        f'Train E{epoch}: ML:{mask_train_loss:.4f} PL:{pred_train_loss:.3f} Acc:{running_accuracy / len(train_loader):.2f}')
+    if counter >= -1:
+        return train_loss, mask_train_loss, pred_train_loss, running_accuracy / len(train_loader), counter
+    return train_loss, mask_train_loss, pred_train_loss, running_accuracy / len(train_loader)
 
 
 def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
@@ -136,52 +153,53 @@ def validate(model, val_loader, criterion_mask, criterion_pred, epoch, device):
     mask_running_loss = 0.0
     pred_running_loss = 0.0
     progress_bar = tqdm(val_loader, desc=f'Validation Epoch {epoch}')
-    for i, batch in enumerate(progress_bar):
-        inputs, mask_labels, attributes, = batch
-        attributes = attributes.to(device)
-        # colour_labels = colour_labels.to(device)
-        inputs, mask_labels = inputs.to(device), mask_labels.to(device)
+    with torch.no_grad():
+        for i, batch in enumerate(progress_bar):
+            inputs, mask_labels, attributes, = batch
+            attributes = attributes.to(device)
+            # colour_labels = colour_labels.to(device)
+            inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
-        # total = len(val_loader)
-        # scale_factor = i / total * 0.5 + 0.5
-        # # scale_factor = random.uniform(0.2, 1)
-        # inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
-        #                                                                                              scale_factor)
+            # total = len(val_loader)
+            # scale_factor = i / total * 0.5 + 0.5
+            # # scale_factor = random.uniform(0.2, 1)
+            # inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+            #                                                                                              scale_factor)
 
-        pred_masks, pred_classes = model(inputs)
-        mask_loss = criterion_mask(pred_masks, mask_labels)
-        # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
-        pred_loss = criterion_pred(pred_classes, attributes)
-        loss = mask_loss + pred_loss
+            pred_masks, pred_classes = model(inputs)
+            mask_loss = criterion_mask(pred_masks, mask_labels)
+            # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
+            pred_loss = criterion_pred(pred_classes, attributes)
+            loss = mask_loss + pred_loss
 
-        # Assume `predictions` and `classes` are your model's predictions and true class labels respectively
-        predictions = pred_classes > 0.5
-        # Create a mask for where the true class labels are 1 (positive class)
-        positive_class_mask = (attributes == 1)
-        # Select predictions and true labels where true labels are 1
-        positive_predictions = predictions[positive_class_mask]
-        positive_true_labels = attributes[positive_class_mask]
-        # Calculate correct predictions for positive class
-        correct_positives = (positive_predictions == positive_true_labels).float()
-        # Calculate accuracy for positive class
-        if correct_positives.numel() > 0:  # Check to make sure we have positive samples
-            positive_accuracy = correct_positives.mean()
-        else:
-            positive_accuracy = torch.tensor(0.0)  # If no positive samples, set accuracy to 0
-        # Now `positive_accuracy` will be the accuracy only for the class with label 1
-        accuracy = positive_accuracy
+            # Assume `predictions` and `classes` are your model's predictions and true class labels respectively
+            predictions = pred_classes > 0.5
+            # Create a mask for where the true class labels are 1 (positive class)
+            positive_class_mask = (attributes == 1)
+            # Select predictions and true labels where true labels are 1
+            positive_predictions = predictions[positive_class_mask]
+            positive_true_labels = attributes[positive_class_mask]
+            # Calculate correct predictions for positive class
+            correct_positives = (positive_predictions == positive_true_labels).float()
+            # Calculate accuracy for positive class
+            if correct_positives.numel() > 0:  # Check to make sure we have positive samples
+                positive_accuracy = correct_positives.mean()
+            else:
+                positive_accuracy = torch.tensor(0.0)  # If no positive samples, set accuracy to 0
+            # Now `positive_accuracy` will be the accuracy only for the class with label 1
+            accuracy = positive_accuracy.detach().cpu().item()
 
-        running_loss += loss.item()
-        mask_running_loss += mask_loss.item()
-        pred_running_loss += pred_loss.item()
-        running_accuracy += accuracy
-        progress_bar.set_description(
-            f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
+            running_loss += loss.item()
+            mask_running_loss += mask_loss.item()
+            pred_running_loss += pred_loss.item()
+            running_accuracy += accuracy
+            progress_bar.set_description(
+                f'Val E{epoch}:  ML:{mask_running_loss / (i + 1):.4f} PL:{pred_running_loss / (i + 1):.3f} Acc:{running_accuracy / (i + 1):.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
     pred_val_loss = pred_running_loss / len(val_loader)
-    return val_loss, mask_val_loss, pred_val_loss
+    return val_loss, mask_val_loss, pred_val_loss, running_accuracy / len(val_loader)
 
 
 def test(model, test_loader, criterion_mask, criterion_pred, epoch, device):
@@ -236,6 +254,118 @@ def test(model, test_loader, criterion_mask, criterion_pred, epoch, device):
     # cl_test_loss = cl_running_loss / len(test_loader)
     # rg_test_loss = rg_running_loss / len(test_loader)
     return test_loss, mask_test_loss, pred_test_loss  # , rg_test_loss
+
+
+def train_DeepFashion2(model, optimizer, train_loader, scale_range, epoch, device, tb_writer=None, counter=-1):
+    model.train()#
+    running_loss = 0.0
+    mask_running_loss = 0.0
+    pred_running_loss = 0.0
+    det_running_loss = 0.0
+    running_mAP = 0.0
+    running_f1 = 0.0
+    running_iou = 0.0
+
+    progress_bar = tqdm(train_loader, desc=f'Training Epoch {epoch}')
+    for i, batch in enumerate(progress_bar):
+        inputs, mask_labels, attributes, bboxes = batch
+
+        _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
+        # from datasets import show_deepfashion2_image_masks_and_labels
+        # show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes, _bboxes)
+
+        attributes = attributes.to(device)
+        inputs, mask_labels = inputs.to(device), mask_labels.to(device)
+
+        # Select a uniform scale for the entire batch
+        scale_factor = random.uniform(*scale_range)
+        inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+                                                                                                     scale_factor)
+
+        loss, loss_mask, loss_pred, loss_det, mAP, f1, iou = model.train_batch(inputs, mask_labels, attributes, bboxes, optimizer)
+
+        running_loss += loss
+        mask_running_loss += loss_mask
+        pred_running_loss += loss_pred
+        det_running_loss += loss_det
+        running_mAP += mAP
+        running_f1 += f1
+        running_iou += iou
+
+        progress_bar.set_description(
+            f'TE{epoch}: ML:{loss_mask:.3f} PL:{loss_pred.item():.3f} BL:{loss_det:.3f} mAP:{mAP:.2f} f1:{f1:.2f} iou:{iou:.2f}')
+        if tb_writer is not None and counter > -1:
+            tb_writer.add_scalar('Loss/Train', loss.item(), counter)
+            tb_writer.add_scalar('LossMask/Train', loss_mask, counter)
+            tb_writer.add_scalar('LossPred/Train', loss_pred, counter)
+            tb_writer.add_scalar('LossBBox/Train', loss_det, counter)
+            tb_writer.add_scalar('MAP/Train', mAP, counter)
+            tb_writer.add_scalar('F1/Train', f1, counter)
+            tb_writer.add_scalar('IOU/Train', iou, counter)
+        if counter > -1:
+            counter += 1
+
+    train_loss = running_loss / len(train_loader)
+    mask_train_loss = mask_running_loss / len(train_loader)
+    pred_train_loss = pred_running_loss / len(train_loader)
+    avrg_mAP = running_mAP / len(train_loader)
+    avrg_f1 = running_f1 / len(train_loader)
+    avrg_iou = running_iou / len(train_loader)
+    progress_bar.set_description(
+        f'TE{epoch}: ML:{mask_running_loss:.3f} PL:{pred_running_loss:.3f} BL:{det_running_loss:.3f} mAP:{avrg_mAP:.2f} f1:{avrg_f1:.2f} iou:{avrg_iou:.2f}')
+    if counter >= -1:
+        return train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, avrg_iou, counter
+    return train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, avrg_iou
+
+
+def val_DeepFashion2(model, val_loader, scale_range, epoch, device):
+    model.train()
+    running_loss = 0.0
+    mask_running_loss = 0.0
+    pred_running_loss = 0.0
+    det_running_loss = 0.0
+    running_mAP = 0.0
+    running_f1 = 0.0
+    running_iou = 0.0
+
+    progress_bar = tqdm(val_loader, desc=f'Training Epoch {epoch}')
+    for i, batch in enumerate(progress_bar):
+        inputs, mask_labels, attributes, bboxes = batch
+
+        _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
+        # from datasets import show_deepfashion2_image_masks_and_labels
+        # show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes, _bboxes)
+
+        attributes = attributes.to(device)
+        inputs, mask_labels = inputs.to(device), mask_labels.to(device)
+
+        # Select a uniform scale for the entire batch
+        scale_factor = random.uniform(*scale_range)
+        inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+                                                                                                     scale_factor)
+
+        loss, loss_mask, loss_pred, loss_det, mAP, f1, iou = model.val_batch(inputs, mask_labels, attributes, bboxes)
+
+        running_loss += loss
+        mask_running_loss += loss_mask
+        pred_running_loss += loss_pred
+        det_running_loss += loss_det
+        running_mAP += mAP
+        running_f1 += f1
+        running_iou += iou
+
+        progress_bar.set_description(
+            f'VE{epoch}: ML:{loss_mask:.3f} PL:{loss_pred.item():.3f} BL:{loss_det:.3f} mAP:{mAP:.2f} f1:{f1:.2f} iou:{iou:.2f}')
+
+    val_loss = running_loss / len(val_loader)
+    mask_val_loss = mask_running_loss / len(val_loader)
+    pred_val_loss = pred_running_loss / len(val_loader)
+    avrg_mAP = running_mAP / len(val_loader)
+    avrg_f1 = running_f1 / len(val_loader)
+    avrg_iou = running_iou / len(val_loader)
+    progress_bar.set_description(
+        f'VE{epoch}: ML:{mask_running_loss:.3f} PL:{pred_running_loss:.3f} BL:{det_running_loss:.3f} mAP:{avrg_mAP:.2f} f1:{avrg_f1:.2f} iou:{avrg_iou:.2f}')
+    return val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1, avrg_iou
 
 
 def train_CCP(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode=0):
