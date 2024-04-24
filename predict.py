@@ -6,7 +6,7 @@ from models import *
 from datasets import *
 from utils import *
 
-from image_with_masks_and_attributes import ImageWithMasksAndAttributes, ImageOfPerson
+from image_with_masks_and_attributes import ImageWithMasksAndAttributes, ImageOfHead
 
 
 def read_images(path: str, size: int) -> tuple[list[np.ndarray], list[str]]:
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     p = Predictor(model, device, categories_and_attributes)
     images_list, path_list = read_images(test_path, size=192)
     for img, path in zip(images_list, path_list):
-        rst = ImageOfPerson.from_parent_instance(p.predict(img))
+        rst = ImageOfHead.from_parent_instance(p.predict(img))
         # print()
         print(path)
         print(rst.attributes)

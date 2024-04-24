@@ -50,13 +50,13 @@ def _max_value_tuple(some_dict: dict[str, float]) -> tuple[str, float]:
     return max_key, some_dict[max_key]
 
 
-class ImageOfPerson(ImageWithMasksAndAttributes):
+class ImageOfHead(ImageWithMasksAndAttributes):
     def __init__(self, image: np.ndarray, masks: dict[str, np.ndarray], attributes: dict[str, float],
                  categories_and_attributes: CategoriesAndAttributes):
         super().__init__(image, masks, attributes, categories_and_attributes)
 
     @classmethod
-    def from_parent_instance(cls, parent_instance: ImageWithMasksAndAttributes) -> 'ImageOfPerson':
+    def from_parent_instance(cls, parent_instance: ImageWithMasksAndAttributes) -> 'ImageOfHead':
         """
         Creates an instance of ImageOfPerson using the properties of an
         instance of ImageWithMasksAndAttributes.
