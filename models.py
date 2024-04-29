@@ -151,7 +151,7 @@ class SegmentPredictor(nn.Module):
     def __init__(self, num_masks, num_labels, in_channels=3, sigmoid=True):
         super(SegmentPredictor, self).__init__()
         self.sigmoid = sigmoid
-        self.resnet = models.resnet152(pretrained=True)
+        self.resnet = models.resnet101(pretrained=True)
 
         # Adapt ResNet to handle different input channel sizes
         if in_channels != 3:
@@ -185,11 +185,9 @@ class SegmentPredictor(nn.Module):
         self.classifier = nn.Sequential(
             # nn.Linear(512, 256),  # resnet18/34
             nn.Linear(2048, 256),  # resnet50/101/152
-            nn.BatchNorm1d(256),
             nn.LeakyReLU(negative_slope=0.01),
             nn.Dropout(p=0.5),
             nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
             nn.LeakyReLU(negative_slope=0.01),
             nn.Dropout(p=0.5),
             nn.Linear(128, num_labels)
