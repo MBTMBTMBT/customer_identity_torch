@@ -17,11 +17,13 @@ if __name__ == "__main__":
         image_dir='../deepfashion2/train/image',
         anno_dir='../deepfashion2/train/annos',
         output_size=image_size,
+        return_bbox=False,
     )
     val_dataset = DeepFashion2Dataset(
         image_dir='../deepfashion2/validation/image',
         anno_dir='../deepfashion2/validation/annos',
         output_size=image_size,
+        return_bbox=False,
     )
     # train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
     train_dataset = AugmentedDeepFashion2Dataset(
@@ -39,19 +41,23 @@ if __name__ == "__main__":
     # )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=12, collate_fn=collate_fn_DeepFashion2)
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=12, collate_fn=collate_fn_DeepFashion2)
-
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=12, )
+    # collate_fn=collate_fn_DeepFashion2)
+    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=12, )
+    # collate_fn=collate_fn_DeepFashion2)
 
     # choose device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # model
     num_classes = len(DeepFashion2Dataset.categories)
-    model = IntegratedModel(num_classes=num_classes, num_labels=num_classes, num_detection_classes=num_classes, device=device)
+    model = SegmentPredictor(num_masks=num_classes, num_labels=num_classes, )
     model.to(device)
 
     # optimizer
+    # optimizer
+    criterion_mask = nn.BCELoss()
+    criterion_pred = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # TensorBoard writer
@@ -84,19 +90,40 @@ if __name__ == "__main__":
         print(f'Epoch {epoch + 1}/{num_epochs}')
         print('-' * 10)
 
-        # train, validate, test
-        train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, avrg_iou, counter = train_DeepFashion2(model, optimizer, train_loader, scale_range, epoch, device, tb_writer=writer, counter=counter)
-        val_loss, mask_val_loss, pred_val_loss, val_avrg_mAP, val_avrg_f1, val_avrg_iou = val_DeepFashion2(model, val_loader, (1, 1), epoch, device)
+        train_loss, mask_train_loss, pred_train_loss, train_acc, counter = train(model, optimizer,
+                                                                                 train_loader,
+                                                                                 criterion_mask,
+                                                                                 criterion_pred,
+                                                                                 scale_range, epoch,
+                                                                                 device, mode='mix',
+                                                                                 tb_writer=writer,
+                                                                                 counter=counter)
+        val_loss, mask_val_loss, pred_val_loss, val_acc = validate(model, val_loader, criterion_mask, criterion_pred,
+                                                                   epoch,
+                                                                   device)
 
         # write to TensorBoard
-        val_acc = 0.333 * val_avrg_mAP + 0.333 * val_avrg_f1 + 0.333 * val_avrg_iou
+        # writer.add_scalar('Loss/Train', train_loss, epoch)
         writer.add_scalar('Loss/Validation', val_loss, epoch)
+        # writer.add_scalar('LossMask/Train', mask_train_loss, epoch)
         writer.add_scalar('LossMask/Validation', mask_val_loss, epoch)
+        # writer.add_scalar('LossPred/Train', pred_train_loss, epoch)
         writer.add_scalar('LossPred/Validation', pred_val_loss, epoch)
         writer.add_scalar('Accuracy/Validation', val_acc, epoch)
-        writer.add_scalar('MAP/Validation', val_avrg_mAP, epoch)
-        writer.add_scalar('F1/Validation', val_avrg_f1, epoch)
-        writer.add_scalar('IOU/Validation', val_avrg_iou, epoch)
+
+        # train, validate, test
+        # train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, avrg_iou, counter = train_DeepFashion2(model, optimizer, train_loader, scale_range, epoch, device, tb_writer=writer, counter=counter)
+        # val_loss, mask_val_loss, pred_val_loss, val_avrg_mAP, val_avrg_f1, val_avrg_iou = val_DeepFashion2(model, val_loader, (1, 1), epoch, device)
+
+        # # write to TensorBoard
+        # val_acc = 0.333 * val_avrg_mAP + 0.333 * val_avrg_f1 + 0.333 * val_avrg_iou
+        # writer.add_scalar('Loss/Validation', val_loss, epoch)
+        # writer.add_scalar('LossMask/Validation', mask_val_loss, epoch)
+        # writer.add_scalar('LossPred/Validation', pred_val_loss, epoch)
+        # writer.add_scalar('Accuracy/Validation', val_acc, epoch)
+        # writer.add_scalar('MAP/Validation', val_avrg_mAP, epoch)
+        # writer.add_scalar('F1/Validation', val_avrg_f1, epoch)
+        # writer.add_scalar('IOU/Validation', val_avrg_iou, epoch)
 
         # save the model
         if val_acc >= best_acc:
