@@ -107,7 +107,7 @@ class DeepFashion2Dataset(Dataset):
         'long sleeve dress', 'vest dress', 'sling dress'
     ]
 
-    def __init__(self, image_dir, anno_dir, output_size=(300, 400)):
+    def __init__(self, image_dir, anno_dir, output_size=(300, 400), return_bbox=True):
         self.output_size = output_size  # input: W, H
         self.image_dir = image_dir
         self.anno_dir = anno_dir
@@ -115,6 +115,7 @@ class DeepFashion2Dataset(Dataset):
         self.transform = transforms.Compose([
             transforms.ToTensor(),  # Converts to Torch tensor and scales to [0, 1]
         ])
+        self.return_bbox = return_bbox
 
     def __len__(self):
         return len(self.image_filenames)
@@ -165,7 +166,10 @@ class DeepFashion2Dataset(Dataset):
         # Update labels based on mask presence after cropping
         labels = (torch.sum(masks.reshape(len(self.categories), -1), dim=1) > 0).float()
 
-        return image_tensor, masks, labels, bboxes
+        if self.return_bbox:
+            return image_tensor, masks, labels, bboxes
+        else:
+            return image_tensor, masks, labels
 
     def convert_bbox(self, bbox, orig_size, crop_size, output_size):
         x1, y1, x2, y2 = bbox
@@ -963,15 +967,20 @@ class AugmentedDataset(Dataset):
 
 
 class AugmentedDeepFashion2Dataset(AugmentedDataset):
-    def __init__(self, dataset_source, flip_prob=0.5, crop_ratio=(0.8, 0.8), scale_factor=(0.5, 2),
+    def __init__(self, dataset_source: DeepFashion2Dataset, flip_prob=0.5, crop_ratio=(0.8, 0.8), scale_factor=(0.5, 2),
                  output_size=(512, 512), noise_level=(0, 10), blur_radius=(0, 2), brightness_factor=(0.75, 1.25),
                  pil=False, seed=None):
         super().__init__(dataset_source, flip_prob, crop_ratio, scale_factor, output_size,
                          noise_level, blur_radius, brightness_factor, pil, seed)
+        self.dataset_source = dataset_source
 
     def __getitem__(self, idx):
         # Retrieve data from the source dataset
-        image_tensor, masks, labels, bboxes = self.source.__getitem__(idx)
+        if self.dataset_source.return_bbox:
+            image_tensor, masks, labels, bboxes = self.source.__getitem__(idx)
+        else:
+            image_tensor, masks, labels = self.source.__getitem__(idx)
+            bboxes = []
 
         # Generate transform parameters for this sample
         transform_params = self._get_transform_params()
@@ -991,7 +1000,10 @@ class AugmentedDeepFashion2Dataset(AugmentedDataset):
             [transforms.ToTensor()(self._apply_common_transforms(m, transform_params)) for m in
              masks], dim=0).squeeze(1)
 
-        return transformed_image_tensor, transformed_masks, labels, transformed_bboxes
+        if self.dataset_source.return_bbox:
+            return transformed_image_tensor, transformed_masks, labels, transformed_bboxes
+        else:
+            return transformed_image_tensor, transformed_masks, labels
 
     def _adjust_bbox(self, bbox, params, orig_size):
         # Extract bounding box coordinates
