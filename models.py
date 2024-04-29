@@ -12,23 +12,19 @@ from torchvision.ops.feature_pyramid_network import LastLevelP6P7
 from sklearn.metrics import f1_score, jaccard_score, average_precision_score
 
 
-def X2conv(in_channels, out_channels, inner_channels=None):
-    inner_channels = out_channels // 2 if inner_channels is None else inner_channels
-    down_conv = nn.Sequential(
-        nn.Conv2d(in_channels, inner_channels, kernel_size=3, padding=1, bias=False),
-        nn.BatchNorm2d(inner_channels),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(inner_channels, out_channels, kernel_size=3, padding=1, bias=False),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True))
-    return down_conv
-
-
 class Decoder(nn.Module):
     def __init__(self, in_channels, skip_channels, out_channels):
-        super(Decoder, self).__init__()
+        super().__init__()
         self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
-        self.up_conv = X2conv(out_channels + skip_channels, out_channels)
+
+        inner_channels = out_channels // 2
+        self.up_conv = nn.Sequential(
+            nn.Conv2d(out_channels + skip_channels, inner_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(inner_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(inner_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True))
 
     def forward(self, x_copy, x):
         x = self.up(x)
@@ -149,6 +145,80 @@ class CombinedModel(nn.Module):
 
     def unfreeze_segment_model(self):
         self.segment_model.train()
+
+
+class SegmentPredictor(nn.Module):
+    def __init__(self, num_masks, num_labels, in_channels=3, sigmoid=True):
+        super(SegmentPredictor, self).__init__()
+        self.sigmoid = sigmoid
+        self.resnet = models.resnet101(pretrained=True)
+
+        # Adapt ResNet to handle different input channel sizes
+        if in_channels != 3:
+            self.resnet.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+        # Encoder layers
+        self.encoder1 = nn.Sequential(self.resnet.conv1, self.resnet.bn1, self.resnet.relu)
+        self.encoder2 = self.resnet.layer1
+        self.encoder3 = self.resnet.layer2
+        self.encoder4 = self.resnet.layer3
+        self.encoder5 = self.resnet.layer4
+
+        # Decoder layers
+        # resnet18/34
+        # self.up1 = Decoder(512, 256, 256)
+        # self.up2 = Decoder(256, 128, 128)
+        # self.up3 = Decoder(128, 64, 64)
+        # self.up4 = Decoder(64, 64, 64)
+
+        # resnet50/101
+        self.up1 = Decoder(2048, 1024, 1024)
+        self.up2 = Decoder(1024, 512, 512)
+        self.up3 = Decoder(512, 256, 256)
+        self.up4 = Decoder(256, 64, 64)
+
+        # Segmentation head
+        self.final_conv = nn.Conv2d(64, num_masks, kernel_size=1)
+
+        # Classification head
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = nn.Sequential(
+            nn.Linear(2048, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Dropout(p=0.5),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Dropout(p=0.5),
+            nn.Linear(128, num_labels)
+        )
+
+    def forward(self, x):
+        x1 = self.encoder1(x)
+        x2 = self.encoder2(x1)
+        x3 = self.encoder3(x2)
+        x4 = self.encoder4(x3)
+        x5 = self.encoder5(x4)
+
+        x = self.up1(x4, x5)
+        x = self.up2(x3, x)
+        x = self.up3(x2, x)
+        x = self.up4(x1, x)
+        x = F.interpolate(x, size=(x.size(2) * 2, x.size(3) * 2), mode='bilinear', align_corners=True)
+
+        mask = self.final_conv(x)
+
+        # Predicting the labels using features from the last encoder output
+        x_cls = self.global_pool(x5)  # Use the feature map from the last encoder layer
+        x_cls = x_cls.view(x_cls.size(0), -1)
+        labels = self.classifier(x_cls)
+
+        if self.sigmoid:
+            mask = torch.sigmoid(mask)
+            labels = torch.sigmoid(labels)
+
+        return mask, labels
 
 
 def calc_detection_loss(class_logits, box_regression, labels, boxes):
