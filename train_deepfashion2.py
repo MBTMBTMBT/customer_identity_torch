@@ -90,17 +90,12 @@ if __name__ == "__main__":
         print(f'Epoch {epoch + 1}/{num_epochs}')
         print('-' * 10)
 
-        train_loss, mask_train_loss, pred_train_loss, train_acc, counter = train(model, optimizer,
-                                                                                 train_loader,
-                                                                                 criterion_mask,
-                                                                                 criterion_pred,
-                                                                                 scale_range, epoch,
-                                                                                 device, mode='mix',
-                                                                                 tb_writer=writer,
-                                                                                 counter=counter)
+        train_loss, mask_train_loss, pred_train_loss, train_acc, counter = train(model, optimizer, train_loader,
+                                                                                 criterion_mask, criterion_pred,
+                                                                                 scale_range, epoch, device, mode='mix',
+                                                                                 tb_writer=writer, counter=counter)
         val_loss, mask_val_loss, pred_val_loss, val_acc = validate(model, val_loader, criterion_mask, criterion_pred,
-                                                                   epoch,
-                                                                   device)
+                                                                   epoch, device)
 
         # write to TensorBoard
         # writer.add_scalar('Loss/Train', train_loss, epoch)
