@@ -1,6 +1,6 @@
-import torch
-from tqdm import tqdm
 import random
+
+from tqdm import tqdm
 
 from utils import *
 
@@ -113,7 +113,10 @@ def train(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_
             pred_loss.backward()
         else:
             # print('Training whole network.')
-            model.unfreeze_segment_model()
+            try:
+                model.unfreeze_segment_model()
+            except Exception as ignore:
+                pass
             loss.backward()
 
         optimizer.step()
