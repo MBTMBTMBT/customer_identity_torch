@@ -16,7 +16,6 @@ from categories_and_attributes import CategoriesAndAttributes, CelebAMaskHQCateg
 import json
 import matplotlib.patches as patches
 from torchvision.transforms import functional as TF
-from matplotlib.patches import Rectangle
 
 
 # class CategoryType(enum.Enum):
@@ -280,52 +279,6 @@ def collate_fn_DeepFashion2(batch):
 #
 #     plt.tight_layout()
 #     plt.show()
-
-
-def show_deepfashion2_image_masks_and_labels(image, masks, labels, bboxes):
-    categories = [
-        'short sleeve top', 'long sleeve top', 'short sleeve outwear',
-        'long sleeve outwear', 'vest', 'sling', 'shorts',
-        'trousers', 'skirt', 'short sleeve dress',
-        'long sleeve dress', 'vest dress', 'sling dress'
-    ]
-
-    # Convert the image tensor to PIL Image for display
-    image_pil = transforms.ToPILImage()(image)
-    img_width, img_height = image_pil.size
-
-    # Set up the plot
-    num_subplots = len(labels) + 1
-    fig, axs = plt.subplots(1, num_subplots, figsize=(20, 3))
-
-    # Plot the original image
-    axs[0].imshow(image_pil)
-    axs[0].set_title('Original Image')
-    axs[0].axis('off')
-
-    # Plot each mask
-    for i, mask in enumerate(masks):
-        axs[i + 1].imshow(image_pil, alpha=0.5)  # Show the underlying image
-        axs[i + 1].imshow(mask, cmap='gray', alpha=0.5, interpolation='none')  # Overlay the mask
-        axs[i + 1].set_title(f'{categories[i]}: {"1" if labels[i] == 1.0 else "0"}')
-        axs[i + 1].axis('off')
-
-        # Add bounding boxes to the plot
-        for cat_id, bbox in bboxes:
-            if cat_id == i:
-                # Convert normalized coordinates to pixel coordinates
-                x1, y1, x2, y2 = bbox
-                x1_px = max(0, x1 * img_width)
-                y1_px = max(0, y1 * img_height)
-                x2_px = min(img_width, x2 * img_width)
-                y2_px = min(img_height, y2 * img_height)
-                rect_width = x2_px - x1_px
-                rect_height = y2_px - y1_px
-                rect = Rectangle((x1_px, y1_px), rect_width, rect_height, linewidth=1, edgecolor='r', facecolor='none')
-                axs[i + 1].add_patch(rect)
-
-    plt.tight_layout()
-    plt.show()
 
 
 def display_deepfashion_image_with_annotations(image_folder, anno_folder):

@@ -1,6 +1,5 @@
 if __name__ == "__main__":
     import torch.optim as optim
-    from torch.utils.data import Subset, DataLoader  # random_split
     from torch.utils.tensorboard import SummaryWriter
 
     from models import *
@@ -41,7 +40,7 @@ if __name__ == "__main__":
     # )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=8, )
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=8, )
     # collate_fn=collate_fn_DeepFashion2)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=8, )
     # collate_fn=collate_fn_DeepFashion2)
@@ -60,15 +59,13 @@ if __name__ == "__main__":
     criterion_pred = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
-    # TensorBoard writer
-    writer = SummaryWriter('deepfashion2')
 
     # early stopping params
     early_stopping_patience = 5
     early_stopping_counter = 0
 
     # check model saving dir
-    model_dir = "deepfashion2"
+    model_dir = "deepfashion2-segpred"
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
@@ -83,6 +80,9 @@ if __name__ == "__main__":
         start_epoch = 0
         counter = 0
         best_acc = 0.0
+
+    # TensorBoard writer
+    writer = SummaryWriter(model_dir)
 
     # train loop
     num_epochs = 60

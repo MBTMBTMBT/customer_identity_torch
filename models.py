@@ -151,7 +151,7 @@ class SegmentPredictor(nn.Module):
     def __init__(self, num_masks, num_labels, in_channels=3, sigmoid=True):
         super(SegmentPredictor, self).__init__()
         self.sigmoid = sigmoid
-        self.resnet = models.resnet101(pretrained=True)
+        self.resnet = models.resnet50(pretrained=True)
 
         # Adapt ResNet to handle different input channel sizes
         if in_channels != 3:

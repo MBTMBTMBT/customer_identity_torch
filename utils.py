@@ -5,98 +5,98 @@ import os
 import re
 import cv2
 import matplotlib.pyplot as plt
+from matplotlib import pyplot as plt
+from matplotlib.patches import Rectangle
 from scipy.ndimage import convolve
-
+from torchvision import transforms
 
 COLOURS = {
-        "red": [255, 0, 0],
-        "green": [0, 255, 0],
-        "blue": [0, 0, 255],
-        "white": [255, 255, 255],
-        "black": [0, 0, 0],
-        "yellow": [255, 255, 0],
-        "cyan": [0, 255, 255],
-        "magenta": [255, 0, 255],
-        "gray": [128, 128, 128],
-        "orange": [255, 165, 0],
-        "purple": [128, 0, 128],
-        "brown": [139, 69, 19],
-        "pink": [255, 182, 193],
-        "beige": [245, 245, 220],
-        "maroon": [128, 0, 0],
-        "olive": [128, 128, 0],
-        "navy": [0, 0, 128],
-        "lime": [50, 205, 50],
-        "golden": [255, 223, 0],
-        "teal": [0, 128, 128],
-        "coral": [255, 127, 80],
-        "salmon": [250, 128, 114],
-        "turquoise": [64, 224, 208],
-        "violet": [238, 130, 238],
-        "platinum": [229, 228, 226],
-        "ochre": [204, 119, 34],
-        "burntsienna": [233, 116, 81],
-        "chocolate": [210, 105, 30],
-        "tan": [210, 180, 140],
-        "ivory": [255, 255, 240],
-        "goldenrod": [218, 165, 32],
-        "orchid": [218, 112, 214],
-        "honey": [238, 220, 130]
-    }
-
+    "red": [255, 0, 0],
+    "green": [0, 255, 0],
+    "blue": [0, 0, 255],
+    "white": [255, 255, 255],
+    "black": [0, 0, 0],
+    "yellow": [255, 255, 0],
+    "cyan": [0, 255, 255],
+    "magenta": [255, 0, 255],
+    "gray": [128, 128, 128],
+    "orange": [255, 165, 0],
+    "purple": [128, 0, 128],
+    "brown": [139, 69, 19],
+    "pink": [255, 182, 193],
+    "beige": [245, 245, 220],
+    "maroon": [128, 0, 0],
+    "olive": [128, 128, 0],
+    "navy": [0, 0, 128],
+    "lime": [50, 205, 50],
+    "golden": [255, 223, 0],
+    "teal": [0, 128, 128],
+    "coral": [255, 127, 80],
+    "salmon": [250, 128, 114],
+    "turquoise": [64, 224, 208],
+    "violet": [238, 130, 238],
+    "platinum": [229, 228, 226],
+    "ochre": [204, 119, 34],
+    "burntsienna": [233, 116, 81],
+    "chocolate": [210, 105, 30],
+    "tan": [210, 180, 140],
+    "ivory": [255, 255, 240],
+    "goldenrod": [218, 165, 32],
+    "orchid": [218, 112, 214],
+    "honey": [238, 220, 130]
+}
 
 SPESIFIC_COLOURS = {
-        "red": [255, 0, 0],
-        "green": [0, 255, 0],
-        "blue": [0, 0, 255],
-        "white": [255, 255, 255],
-        "black": [0, 0, 0],
-        "yellow": [255, 255, 0],
-        "cyan": [0, 255, 255],
-        "magenta": [255, 0, 255],
-        "gray": [128, 128, 128],
-        "orange": [255, 165, 0],
-        "purple": [128, 0, 128],
-        "brown": [139, 69, 19],
-        "pink": [255, 182, 193],
-        "beige": [245, 245, 220],
-        "maroon": [128, 0, 0],
-        "olive": [128, 128, 0],
-        "navy": [0, 0, 128],
-        "lime": [50, 205, 50],
-        "golden": [255, 223, 0],
-        "teal": [0, 128, 128],
-        "coral": [255, 127, 80],
-        "salmon": [250, 128, 114],
-        "turquoise": [64, 224, 208],
-        "violet": [238, 130, 238],
-        "platinum": [229, 228, 226],
-        "ochre": [204, 119, 34],
-        "burntsienna": [233, 116, 81],
-        "chocolate": [210, 105, 30],
-        "tan": [210, 180, 140],
-        "ivory": [255, 255, 240],
-        "goldenrod": [218, 165, 32],
-        "orchid": [218, 112, 214],
-        "honey": [238, 220, 130],
-        "lavender": [230, 230, 250],
-        "mint": [189, 252, 201],
-        "peach": [255, 229, 180],
-        "ruby": [224, 17, 95],
-        "indigo": [75, 0, 130],
-        "amber": [255, 191, 0],
-        "emerald": [80, 200, 120],
-        "sapphire": [15, 82, 186],
-        "aquamarine": [127, 255, 212],
-        "periwinkle": [204, 204, 255],
-        "fuchsia": [255, 0, 255],
-        "raspberry": [227, 11, 92],
-        "slate": [112, 128, 144],
-        "charcoal": [54, 69, 79]
-    }
+    "red": [255, 0, 0],
+    "green": [0, 255, 0],
+    "blue": [0, 0, 255],
+    "white": [255, 255, 255],
+    "black": [0, 0, 0],
+    "yellow": [255, 255, 0],
+    "cyan": [0, 255, 255],
+    "magenta": [255, 0, 255],
+    "gray": [128, 128, 128],
+    "orange": [255, 165, 0],
+    "purple": [128, 0, 128],
+    "brown": [139, 69, 19],
+    "pink": [255, 182, 193],
+    "beige": [245, 245, 220],
+    "maroon": [128, 0, 0],
+    "olive": [128, 128, 0],
+    "navy": [0, 0, 128],
+    "lime": [50, 205, 50],
+    "golden": [255, 223, 0],
+    "teal": [0, 128, 128],
+    "coral": [255, 127, 80],
+    "salmon": [250, 128, 114],
+    "turquoise": [64, 224, 208],
+    "violet": [238, 130, 238],
+    "platinum": [229, 228, 226],
+    "ochre": [204, 119, 34],
+    "burntsienna": [233, 116, 81],
+    "chocolate": [210, 105, 30],
+    "tan": [210, 180, 140],
+    "ivory": [255, 255, 240],
+    "goldenrod": [218, 165, 32],
+    "orchid": [218, 112, 214],
+    "honey": [238, 220, 130],
+    "lavender": [230, 230, 250],
+    "mint": [189, 252, 201],
+    "peach": [255, 229, 180],
+    "ruby": [224, 17, 95],
+    "indigo": [75, 0, 130],
+    "amber": [255, 191, 0],
+    "emerald": [80, 200, 120],
+    "sapphire": [15, 82, 186],
+    "aquamarine": [127, 255, 212],
+    "periwinkle": [204, 204, 255],
+    "fuchsia": [255, 0, 255],
+    "raspberry": [227, 11, 92],
+    "slate": [112, 128, 144],
+    "charcoal": [54, 69, 79]
+}
 
-
-DETAILED_COLOURS  = {
+DETAILED_COLOURS = {
     "light_red": [255, 204, 204],
     "bright_red": [255, 0, 0],
     "dark_red": [139, 0, 0],
@@ -130,7 +130,6 @@ DETAILED_COLOURS  = {
     # ...
 }
 
-
 COLOUR_FAMILIES = {
     "light_reds": [[255, 182, 193], [255, 192, 203], [255, 160, 122]],
     "dark_reds": [[139, 0, 0], [178, 34, 34], [165, 42, 42]],
@@ -148,7 +147,6 @@ COLOUR_FAMILIES = {
     "greys": [[128, 128, 128], [169, 169, 169], [192, 192, 192]],
     # ...
 }
-
 
 SIMPLIFIED_COLOURS = {
     "red": [255, 0, 0],
@@ -168,7 +166,6 @@ SIMPLIFIED_COLOURS = {
     "beige": [245, 245, 220],
     "navy": [0, 0, 128]
 }
-
 
 HAIR_COLOURS = {
     'midnight black': (9, 8, 6),
@@ -199,8 +196,8 @@ HAIR_COLOURS = {
     'white blonde': (255, 24, 225),
     'platinum blonde': (202, 191, 177),
     'russet red': (145, 74, 67),
-    'terra cotta': (181, 82, 57) 
-    }
+    'terra cotta': (181, 82, 57)
+}
 
 
 def save_model(epoch, model, optimizer, best_val_loss, path: str, counter=-1):
@@ -237,7 +234,7 @@ def find_latest_checkpoint(model_dir):
     checkpoints = [f for f in os.listdir(model_dir) if f.startswith('model_epoch_') and f.endswith('.pth')]
     if not checkpoints:
         return None
-    
+
     # Extracting the epoch number from the model filename using regex
     checkpoints.sort(key=lambda x: int(re.search(r'(\d+)', x).group()))
     return os.path.join(model_dir, checkpoints[-1])
@@ -253,14 +250,14 @@ def binary_erosion_dilation(tensor, thresholds, erosion_iterations=1, dilation_i
     :param dilation_iterations: Number of dilation iterations
     :return: Processed tensor
     """
-    
+
     # Check if the length of thresholds matches the number of channels
     if len(thresholds) != tensor.size(1):
         raise ValueError("Length of thresholds must match the number of channels")
-    
+
     # Binary thresholding
     for i, threshold in enumerate(thresholds):
-        tensor[:, i] = (tensor[:, i] > threshold/2).float() / 4
+        tensor[:, i] = (tensor[:, i] > threshold / 2).float() / 4
         tensor[:, i] += (tensor[:, i] > threshold).float()
         tensor[:, i] /= max(tensor[:, i].clone())
 
@@ -268,7 +265,7 @@ def binary_erosion_dilation(tensor, thresholds, erosion_iterations=1, dilation_i
     kernel = torch.tensor([[1, 1, 1],
                            [1, 1, 1],
                            [1, 1, 1]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-    
+
     # Replicate the kernel for each channel
     kernel = kernel.repeat(tensor.size(1), 1, 1, 1).to(tensor.device)
 
@@ -291,7 +288,7 @@ def find_contours(mask: np.ndarray) -> list[dict]:
     for contour in contours:
         M = cv2.moments(contour)
         cX = int(M["m10"] / M["m00"])
-        cY = int(M["m01"] / M["m00"])  
+        cY = int(M["m01"] / M["m00"])
         area = cv2.contourArea(contour)
         x, y, w, h = cv2.boundingRect(contour)
         temp_mask = np.zeros_like(mask, dtype=np.uint8)
@@ -303,8 +300,8 @@ def find_contours(mask: np.ndarray) -> list[dict]:
             'mask': temp_mask,
             'width': w,
             'height': h,
-            'bottom': cY + h/2,
-            'top': cY - h/2,
+            'bottom': cY + h / 2,
+            'top': cY - h / 2,
         }
         contour_list.append(contour_dict)
     sorted_contours = sorted(contour_list, key=lambda x: x['area'], reverse=True)
@@ -355,38 +352,38 @@ def median_color_float(rgb_image: torch.Tensor, mask: torch.Tensor) -> torch.Ten
 def plot_with_matplotlib(frame, categories, masks, predictions, colours):
     """Generate an image with matplotlib, showing the original frame and masks with titles and color overlays."""
     assert len(masks) == len(categories) == len(predictions), "Length of masks, categories, and predictions must match."
-    
+
     num_masks = len(masks)
     cols = 3
     rows = (num_masks + 1) // cols + ((num_masks + 1) % cols > 0)  # Adding 1 for the frame
     position = range(1, num_masks + 2)  # +2 to include the frame in the count
 
     fig = plt.figure(figsize=(15, rows * 3))  # Adjust the size as needed
-    
+
     # Add the frame as the first image
     ax = fig.add_subplot(rows, cols, 1)
     # frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     ax.imshow(frame)
     ax.set_title('Original Frame')
     ax.axis('off')
-    
+
     # Iterate over the masks
     for i, idx in enumerate(position[1:], start=1):  # Skip 1 for the frame
         ax = fig.add_subplot(rows, cols, idx)
-        
+
         # Create an RGB image for the colored mask
-        colored_mask = np.stack([masks[i-1]]*3, axis=-1)  # i-1 because we skip the frame in position
-        
+        colored_mask = np.stack([masks[i - 1]] * 3, axis=-1)  # i-1 because we skip the frame in position
+
         # Apply color if category is detected and color is provided
-        if predictions[i-1]:
-            if (i-1) < len(colours):
-                color = np.array(colours[i-1], dtype=np.uint8)  # Convert color to uint8
+        if predictions[i - 1]:
+            if (i - 1) < len(colours):
+                color = np.array(colours[i - 1], dtype=np.uint8)  # Convert color to uint8
                 color_mask = np.zeros_like(colored_mask)  # Initialize color_mask with the same shape as colored_mask
-                color_mask[..., 0] = masks[i-1] * color[0]  # Apply color channel 0
-                color_mask[..., 1] = masks[i-1] * color[1]  # Apply color channel 1
-                color_mask[..., 2] = masks[i-1] * color[2]  # Apply color channel 2
+                color_mask[..., 0] = masks[i - 1] * color[0]  # Apply color channel 0
+                color_mask[..., 1] = masks[i - 1] * color[1]  # Apply color channel 1
+                color_mask[..., 2] = masks[i - 1] * color[2]  # Apply color channel 2
                 # Now combine the colored mask with the original grayscale mask
-                colored_mask = np.where(masks[i-1][:, :, None], color_mask, colored_mask).astype(np.uint8)
+                colored_mask = np.where(masks[i - 1][:, :, None], color_mask, colored_mask).astype(np.uint8)
                 # Show the colored mask
                 ax.imshow(colored_mask)
                 # print(np.max(mask_image))
@@ -394,30 +391,29 @@ def plot_with_matplotlib(frame, categories, masks, predictions, colours):
                 # ax.imshow(mask_image, cmap="gray")
             else:
                 # If there's no color provided for this category, use white color
-                mask_image = masks[i-1]
+                mask_image = masks[i - 1]
                 ax.imshow(mask_image, cmap="gray")
         else:
             # If the category is not detected, keep the mask black
-            mask_image = masks[i-1]
+            mask_image = masks[i - 1]
             ax.imshow(mask_image, cmap="gray")
-
 
         # mask_image = masks[i-1]
         # ax.imshow(mask_image, cmap="gray")
-        
+
         # Set title with the detection status
-        detection_status = 'yes' if predictions[i-1] else 'no'
-        ax.set_title(f"{categories[i-1]} - {detection_status}")
+        detection_status = 'yes' if predictions[i - 1] else 'no'
+        ax.set_title(f"{categories[i - 1]} - {detection_status}")
         ax.axis('off')
-    
+
     plt.tight_layout()
     fig.canvas.draw()
-    
+
     # Retrieve buffer and close the plot to avoid memory issues
     data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
     data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     plt.close(fig)
-    
+
     return data
 
 
@@ -448,7 +444,7 @@ def count_colours_in_masked_area(img, mask, colours, filter_size=3, sort=False):
     colour_counts = {list(colours.keys())[i]: count for i, count in zip(unique, counts)}
     if sort:
         total_pixels = sum(counts)
-        sorted_colours = sorted(((list(colours.keys())[i], count / total_pixels, count) 
+        sorted_colours = sorted(((list(colours.keys())[i], count / total_pixels, count)
                                  for i, count in zip(unique, counts)), key=lambda item: item[2], reverse=True)
         return colour_counts, sorted_colours
 
@@ -528,7 +524,9 @@ def generate_colour_table(image_dict: dict, colour_map: dict):
     """
     colour_table = {}
     for k in image_dict.keys():
-        colour_table[k] = count_colours_in_masked_area(image_dict[k], np.ones((image_dict[k].shape[0], image_dict[k].shape[1])), colour_map, sort=True)
+        colour_table[k] = count_colours_in_masked_area(image_dict[k],
+                                                       np.ones((image_dict[k].shape[0], image_dict[k].shape[1])),
+                                                       colour_map, sort=True)
     return colour_table
 
 
@@ -561,6 +559,7 @@ def compare_colour_distributions(averaged_colours_list, colour_table_dict):
     sorted_distances = sorted(distances.items(), key=lambda item: item[1])
 
     return sorted_distances
+
 
 # Example usage
 # sorted_distances = compare_colour_distributions(averaged_colours, colour_table)
@@ -649,3 +648,53 @@ if __name__ == "__main__":
     image_dict = load_images_to_dict('legacy/hair_colours')
     hair_colour_table = generate_colour_table(image_dict, HAIR_COLOURS)
     print(hair_colour_table)
+
+
+def show_deepfashion2_image_masks_and_labels(image, masks, labels, bboxes, fig=None, axs=None):
+    categories = [
+        'short sleeve top', 'long sleeve top', 'short sleeve outwear',
+        'long sleeve outwear', 'vest', 'sling', 'shorts',
+        'trousers', 'skirt', 'short sleeve dress',
+        'long sleeve dress', 'vest dress', 'sling dress'
+    ]
+
+    # Convert the image tensor to PIL Image for display
+    image_pil = transforms.ToPILImage()(image)
+    img_width, img_height = image_pil.size
+
+    if fig is None or axs is None:
+        fig, axs = plt.subplots(1, len(masks) + 1, figsize=(20, 3))
+    else:
+        # Clear the previous figures
+        for ax in axs:
+            ax.clear()
+
+    # Plot the original image
+    axs[0].imshow(image_pil)
+    axs[0].set_title('Original Image')
+    axs[0].axis('off')
+
+    # Plot each mask
+    for i, mask in enumerate(masks):
+        axs[i + 1].imshow(image_pil, alpha=0.5)  # Show the underlying image
+        axs[i + 1].imshow(mask, cmap='gray', alpha=0.5, interpolation='none')  # Overlay the mask
+        axs[i + 1].set_title(f'{categories[i]}:\n{"%.1f" % labels[i]}')
+        axs[i + 1].axis('off')
+
+        # Add bounding boxes to the plot
+        for cat_id, bbox in bboxes:
+            if cat_id == i:
+                x1, y1, x2, y2 = bbox
+                x1_px = max(0, x1 * img_width)
+                y1_px = max(0, y1 * img_height)
+                x2_px = min(img_width, x2 * img_width)
+                y2_px = min(img_height, y2 * img_height)
+                rect_width = x2_px - x1_px
+                rect_height = y2_px - y1_px
+                rect = Rectangle((x1_px, y1_px), rect_width, rect_height, linewidth=1, edgecolor='r', facecolor='none')
+                axs[i + 1].add_patch(rect)
+
+    plt.tight_layout()
+    plt.draw()
+
+    return fig, axs
