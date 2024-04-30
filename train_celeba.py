@@ -3,6 +3,10 @@ if __name__ == "__main__":
     from torch.utils.data import Subset, DataLoader  # random_split
     from torch.utils.tensorboard import SummaryWriter
 
+    import torch
+
+    torch.backends.cudnn.enabled = False
+
     from models import *
     from datasets import *
     from train import *

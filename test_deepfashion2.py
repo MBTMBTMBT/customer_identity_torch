@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
     cap = cv2.VideoCapture(0)
 
-    device = torch.device('cpu')
+    device = torch.device('cuda')
 
     num_classes = len(DeepFashion2Dataset.categories)
     model = SegmentPredictor(num_masks=num_classes, num_labels=num_classes, )

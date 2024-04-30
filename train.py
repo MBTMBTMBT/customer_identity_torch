@@ -260,67 +260,88 @@ def test(model, test_loader, criterion_mask, criterion_pred, epoch, device):
     return test_loss, mask_test_loss, pred_test_loss  # , rg_test_loss
 
 
-def iou(box1, box2):
+def iou(boxes1, boxes2):
     """
-    Compute the intersection over union of two sets of boxes.
+    Compute the intersection over union of two batches of boxes.
     The box order must be (xmin, ymin, xmax, ymax).
+    Both boxes1 and boxes2 should be tensors of shape [batch_size, num_boxes, 4].
     """
-    inter_xmin = torch.max(box1[:, 0], box2[:, 0])
-    inter_ymin = torch.max(box1[:, 1], box2[:, 1])
-    inter_xmax = torch.min(box1[:, 2], box2[:, 2])
-    inter_ymax = torch.min(box1[:, 3], box2[:, 3])
+    # Expand dimensions to [batch_size, num_boxes1, 1, 4] and [batch_size, 1, num_boxes2, 4]
+    # to make them [batch_size, num_boxes1, num_boxes2, 4] for broadcasting
+    boxes1 = boxes1.unsqueeze(2)
+    boxes2 = boxes2.unsqueeze(1)
 
-    inter_area = torch.clamp(inter_xmax - inter_xmin + 1, min=0) * torch.clamp(inter_ymax - inter_ymin + 1, min=0)
-    box1_area = (box1[:, 2] - box1[:, 0] + 1) * (box1[:, 3] - box1[:, 1] + 1)
-    box2_area = (box2[:, 2] - box2[:, 0] + 1) * (box2[:, 3] - box2[:, 1] + 1)
+    # Compute the coordinates of the intersection rectangle
+    inter_xmin = torch.max(boxes1[..., 0], boxes2[..., 0])
+    inter_ymin = torch.max(boxes1[..., 1], boxes2[..., 1])
+    inter_xmax = torch.min(boxes1[..., 2], boxes2[..., 2])
+    inter_ymax = torch.min(boxes1[..., 3], boxes2[..., 3])
 
-    union_area = box1_area + box2_area - inter_area
+    # Compute the area of intersection rectangle
+    inter_area = torch.clamp(inter_xmax - inter_xmin, min=0) * torch.clamp(inter_ymax - inter_ymin, min=0)
+
+    # Compute the area of both sets of boxes
+    area1 = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
+    area2 = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
+
+    # Compute the union
+    union_area = area1 + area2 - inter_area
+
+    # Compute the IoU
     iou = inter_area / union_area
+
     return iou
 
 
-def calculate_map(pred_boxes, true_boxes, iou_threshold=0.5):
+def calculate_map(pred_boxes, pred_scores, true_boxes, iou_threshold=0.5):
     """
-    Calculate mean average precision given predicted and true boxes.
-    Both boxes need to be in the format (x1, y1, x2, y2).
+    Calculate mean average precision for batches of predicted and true boxes.
+    pred_boxes: Tensor of shape [batch_size, num_pred_boxes, 4]
+    pred_scores: Tensor of shape [batch_size, num_pred_boxes]
+    true_boxes: Tensor of shape [batch_size, num_true_boxes, 4]
     """
-    # Assuming pred_boxes and true_boxes are lists of tensors of shape [N, 4]
-    # where N is the number of boxes and each box is represented as [x1, y1, x2, y2]
-    # Sort pred_boxes by scores which are assumed to be in the last column
-    pred_boxes = sorted(pred_boxes, key=lambda x: x[-1], reverse=True)
+    batch_size = pred_boxes.size(0)
+    aps = []
 
-    num_true_boxes = len(true_boxes)
-    num_pred_boxes = len(pred_boxes)
+    for batch_idx in range(batch_size):
+        # Sort predictions by scores
+        scores, sort_indices = torch.sort(pred_scores[batch_idx], descending=True)
+        sorted_pred_boxes = pred_boxes[batch_idx][sort_indices]
 
-    used = torch.zeros(num_true_boxes)  # Keep track of which true boxes have been 'used'
+        # Compute IoUs between sorted pred boxes and true boxes
+        ious = iou(sorted_pred_boxes.unsqueeze(0), true_boxes[batch_idx].unsqueeze(0)).squeeze(0)
 
-    tp = torch.zeros(num_pred_boxes)
-    fp = torch.zeros(num_pred_boxes)
+        num_true_boxes = true_boxes[batch_idx].size(0)
+        num_pred_boxes = sorted_pred_boxes.size(0)
 
-    for idx, pred_box in enumerate(pred_boxes):
-        if num_true_boxes == 0:
-            fp[idx] = 1
+        if num_true_boxes == 0 or num_pred_boxes == 0:
+            aps.append(0.0)
             continue
 
-        # Calculate IoUs
-        ious = iou(torch.tensor(pred_box[:-1]).unsqueeze(0), torch.tensor(true_boxes))
-        max_iou, max_index = torch.max(ious, dim=0)
+        used = torch.zeros(num_true_boxes, dtype=torch.bool, device=true_boxes.device)
+        tp = torch.zeros(num_pred_boxes, dtype=torch.float32, device=true_boxes.device)
+        fp = torch.zeros(num_pred_boxes, dtype=torch.float32, device=true_boxes.device)
 
-        if max_iou > iou_threshold and used[max_index] == 0:
-            tp[idx] = 1
-            used[max_index] = 1  # Mark this true box as used
-        else:
-            fp[idx] = 1
+        for idx in range(num_pred_boxes):
+            max_iou, max_index = torch.max(ious[idx], dim=0)
+            if max_iou > iou_threshold and not used[max_index]:
+                tp[idx] = 1
+                used[max_index] = True
+            else:
+                fp[idx] = 1
 
-    tp_cumsum = torch.cumsum(tp, dim=0)
-    fp_cumsum = torch.cumsum(fp, dim=0)
+        tp_cumsum = torch.cumsum(tp, dim=0)
+        fp_cumsum = torch.cumsum(fp, dim=0)
 
-    recalls = tp_cumsum / (num_true_boxes + 1e-6)
-    precisions = tp_cumsum / (tp_cumsum + fp_cumsum + 1e-6)
+        recalls = tp_cumsum / (num_true_boxes + 1e-6)
+        precisions = tp_cumsum / (tp_cumsum + fp_cumsum + 1e-6)
 
-    # Calculate AP
-    ap = torch.trapz(precisions, recalls)
-    return ap.item()
+        # Calculate AP for the current batch
+        ap = torch.trapz(precisions, recalls)
+        aps.append(ap.item())
+
+    # Return the mean AP across all batches
+    return sum(aps) / len(aps)
 
 
 def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion_pred, criterion_bbox, scale_range,
@@ -337,7 +358,7 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
     for i, batch in enumerate(progress_bar):
         inputs, mask_labels, attributes, bboxes_list = batch
 
-        _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
+        # _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
         # from datasets import show_deepfashion2_image_masks_and_labels
         # show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes, _bboxes)
 
@@ -347,7 +368,7 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         # process bboxes, batch dimension being (batch_size, num_bbox_classes, 4)
         bboxes = torch.zeros(len(inputs), len(attributes[0]), 4).to(device)
         for b, b_list in enumerate(bboxes_list):
-            for id, box in b_list.items():
+            for id, box in b_list:
                 bboxes[b, id, :] = torch.tensor(box).to(device)
 
         # Select a uniform scale for the entire batch
@@ -372,8 +393,8 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
 
         optimizer.step()
 
-        f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='binary')
-        map_score = calculate_map(pred_bboxes, bboxes)
+        f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='micro')
+        map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
 
         running_loss += loss.item()
         mask_running_loss += mask_loss.item()
@@ -383,7 +404,7 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         running_mAP += map_score
 
         progress_bar.set_description(
-            f'TE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item().item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
+            f'TE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
 
         if tb_writer is not None and counter > -1:
             tb_writer.add_scalar('Loss/Train', loss.item(), counter)
@@ -422,8 +443,8 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
         for i, batch in enumerate(progress_bar):
             inputs, mask_labels, attributes, bboxes_list = batch
 
-            _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[
-                0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
+            # _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[
+            #     0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
             # from datasets import show_deepfashion2_image_masks_and_labels
             # show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes, _bboxes)
 
@@ -433,7 +454,7 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
             # process bboxes, batch dimension being (batch_size, num_bbox_classes, 4)
             bboxes = torch.zeros(len(inputs), len(attributes[0]), 4).to(device)
             for b, b_list in enumerate(bboxes_list):
-                for id, box in b_list.items():
+                for id, box in b_list:
                     bboxes[b, id, :] = torch.tensor(box).to(device)
 
             # Select a uniform scale for the entire batch
@@ -455,8 +476,8 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
             final_bbox_loss = masked_bbox_loss.sum() / bbox_loss_mask.float().sum()
             loss = mask_loss + pred_loss + final_bbox_loss
 
-            f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='binary')
-            map_score = calculate_map(pred_bboxes, bboxes)
+            f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='micro')
+            map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
 
             running_loss += loss.item()
             mask_running_loss += mask_loss.item()
@@ -466,7 +487,7 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
             running_mAP += map_score
 
             progress_bar.set_description(
-                f'VE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item().item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
+                f'VE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
@@ -474,7 +495,7 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
     avrg_mAP = running_mAP / len(val_loader)
     avrg_f1 = running_f1 / len(val_loader)
     progress_bar.set_description(
-        f'VE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item().item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
+        f'VE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
     return val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1
 
 
