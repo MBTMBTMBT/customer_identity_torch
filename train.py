@@ -1,5 +1,6 @@
 import random
 
+from sklearn.metrics import f1_score
 from tqdm import tqdm
 
 from utils import *
@@ -259,19 +260,82 @@ def test(model, test_loader, criterion_mask, criterion_pred, epoch, device):
     return test_loss, mask_test_loss, pred_test_loss  # , rg_test_loss
 
 
-def train_DeepFashion2(model, optimizer, train_loader, scale_range, epoch, device, tb_writer=None, counter=-1):
+def iou(box1, box2):
+    """
+    Compute the intersection over union of two sets of boxes.
+    The box order must be (xmin, ymin, xmax, ymax).
+    """
+    inter_xmin = torch.max(box1[:, 0], box2[:, 0])
+    inter_ymin = torch.max(box1[:, 1], box2[:, 1])
+    inter_xmax = torch.min(box1[:, 2], box2[:, 2])
+    inter_ymax = torch.min(box1[:, 3], box2[:, 3])
+
+    inter_area = torch.clamp(inter_xmax - inter_xmin + 1, min=0) * torch.clamp(inter_ymax - inter_ymin + 1, min=0)
+    box1_area = (box1[:, 2] - box1[:, 0] + 1) * (box1[:, 3] - box1[:, 1] + 1)
+    box2_area = (box2[:, 2] - box2[:, 0] + 1) * (box2[:, 3] - box2[:, 1] + 1)
+
+    union_area = box1_area + box2_area - inter_area
+    iou = inter_area / union_area
+    return iou
+
+
+def calculate_map(pred_boxes, true_boxes, iou_threshold=0.5):
+    """
+    Calculate mean average precision given predicted and true boxes.
+    Both boxes need to be in the format (x1, y1, x2, y2).
+    """
+    # Assuming pred_boxes and true_boxes are lists of tensors of shape [N, 4]
+    # where N is the number of boxes and each box is represented as [x1, y1, x2, y2]
+    # Sort pred_boxes by scores which are assumed to be in the last column
+    pred_boxes = sorted(pred_boxes, key=lambda x: x[-1], reverse=True)
+
+    num_true_boxes = len(true_boxes)
+    num_pred_boxes = len(pred_boxes)
+
+    used = torch.zeros(num_true_boxes)  # Keep track of which true boxes have been 'used'
+
+    tp = torch.zeros(num_pred_boxes)
+    fp = torch.zeros(num_pred_boxes)
+
+    for idx, pred_box in enumerate(pred_boxes):
+        if num_true_boxes == 0:
+            fp[idx] = 1
+            continue
+
+        # Calculate IoUs
+        ious = iou(torch.tensor(pred_box[:-1]).unsqueeze(0), torch.tensor(true_boxes))
+        max_iou, max_index = torch.max(ious, dim=0)
+
+        if max_iou > iou_threshold and used[max_index] == 0:
+            tp[idx] = 1
+            used[max_index] = 1  # Mark this true box as used
+        else:
+            fp[idx] = 1
+
+    tp_cumsum = torch.cumsum(tp, dim=0)
+    fp_cumsum = torch.cumsum(fp, dim=0)
+
+    recalls = tp_cumsum / (num_true_boxes + 1e-6)
+    precisions = tp_cumsum / (tp_cumsum + fp_cumsum + 1e-6)
+
+    # Calculate AP
+    ap = torch.trapz(precisions, recalls)
+    return ap.item()
+
+
+def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion_pred, criterion_bbox, scale_range,
+                       epoch, device, tb_writer=None, counter=-1):
     model.train()#
     running_loss = 0.0
     mask_running_loss = 0.0
     pred_running_loss = 0.0
-    det_running_loss = 0.0
+    bbox_running_loss = 0.0
     running_mAP = 0.0
     running_f1 = 0.0
-    running_iou = 0.0
 
     progress_bar = tqdm(train_loader, desc=f'Training Epoch {epoch}')
     for i, batch in enumerate(progress_bar):
-        inputs, mask_labels, attributes, bboxes = batch
+        inputs, mask_labels, attributes, bboxes_list = batch
 
         _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
         # from datasets import show_deepfashion2_image_masks_and_labels
@@ -280,95 +344,138 @@ def train_DeepFashion2(model, optimizer, train_loader, scale_range, epoch, devic
         attributes = attributes.to(device)
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
+        # process bboxes, batch dimension being (batch_size, num_bbox_classes, 4)
+        bboxes = torch.zeros(len(inputs), len(attributes[0]), 4).to(device)
+        for b, b_list in enumerate(bboxes_list):
+            for id, box in b_list.items():
+                bboxes[b, id, :] = torch.tensor(box).to(device)
+
         # Select a uniform scale for the entire batch
         scale_factor = random.uniform(*scale_range)
         inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
                                                                                                      scale_factor)
 
-        loss, loss_mask, loss_pred, loss_det, mAP, f1, iou = model.train_batch(inputs, mask_labels, attributes, bboxes, optimizer)
+        optimizer.zero_grad()
 
-        running_loss += loss
-        mask_running_loss += loss_mask
-        pred_running_loss += loss_pred
-        det_running_loss += loss_det
-        running_mAP += mAP
+        pred_masks, pred_classes, pred_bboxes = model(inputs)
+        mask_loss = criterion_mask(pred_masks, mask_labels)
+        # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
+        pred_loss = criterion_pred(pred_classes, attributes)
+        bbox_loss = criterion_bbox(pred_bboxes, bboxes)
+        # Mask for the labels, expanded to match losses dimensions
+        bbox_loss_mask = attributes.unsqueeze(-1).expand_as(bbox_loss)  # Make the mask broadcastable to match losses
+        # Apply mask by multiplying (non-relevant losses will be zeroed out)
+        masked_bbox_loss = bbox_loss * bbox_loss_mask.float()
+        # Finally, reduce the loss by summing or averaging only non-zero losses
+        final_bbox_loss = masked_bbox_loss.sum() / bbox_loss_mask.float().sum()
+        loss = mask_loss + pred_loss + final_bbox_loss
+
+        optimizer.step()
+
+        f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='binary')
+        map_score = calculate_map(pred_bboxes, bboxes)
+
+        running_loss += loss.item()
+        mask_running_loss += mask_loss.item()
+        pred_running_loss += pred_loss.item()
+        bbox_running_loss += final_bbox_loss.item()
         running_f1 += f1
-        running_iou += iou
+        running_mAP += map_score
 
         progress_bar.set_description(
-            f'TE{epoch}: ML:{loss_mask:.3f} PL:{loss_pred.item():.3f} BL:{loss_det:.3f} mAP:{mAP:.2f} f1:{f1:.2f} iou:{iou:.2f}')
+            f'TE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item().item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
+
         if tb_writer is not None and counter > -1:
             tb_writer.add_scalar('Loss/Train', loss.item(), counter)
-            tb_writer.add_scalar('LossMask/Train', loss_mask, counter)
-            tb_writer.add_scalar('LossPred/Train', loss_pred, counter)
-            tb_writer.add_scalar('LossBBox/Train', loss_det, counter)
-            tb_writer.add_scalar('MAP/Train', mAP, counter)
+            tb_writer.add_scalar('LossMask/Train', mask_loss.item(), counter)
+            tb_writer.add_scalar('LossPred/Train', pred_loss.item(), counter)
+            tb_writer.add_scalar('LossBBox/Train', final_bbox_loss.item(), counter)
+            tb_writer.add_scalar('MAP/Train', map_score, counter)
             tb_writer.add_scalar('F1/Train', f1, counter)
-            tb_writer.add_scalar('IOU/Train', iou, counter)
         if counter > -1:
             counter += 1
 
     train_loss = running_loss / len(train_loader)
     mask_train_loss = mask_running_loss / len(train_loader)
     pred_train_loss = pred_running_loss / len(train_loader)
+    bbox_train_loss = bbox_running_loss / len(train_loader)
     avrg_mAP = running_mAP / len(train_loader)
     avrg_f1 = running_f1 / len(train_loader)
-    avrg_iou = running_iou / len(train_loader)
     progress_bar.set_description(
-        f'TE{epoch}: ML:{mask_running_loss:.3f} PL:{pred_running_loss:.3f} BL:{det_running_loss:.3f} mAP:{avrg_mAP:.2f} f1:{avrg_f1:.2f} iou:{avrg_iou:.2f}')
+        f'TE{epoch}: ML:{mask_running_loss:.3f} PL:{pred_running_loss:.3f} BL:{bbox_train_loss:.3f} mAP:{avrg_mAP:.2f} f1:{avrg_f1:.2f}')
     if counter >= -1:
-        return train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, avrg_iou, counter
-    return train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, avrg_iou
+        return train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, counter
+    return train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1
 
 
-def val_DeepFashion2(model, val_loader, scale_range, epoch, device):
+def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterion_bbox, scale_range, epoch, device):
     model.train()
     running_loss = 0.0
     mask_running_loss = 0.0
     pred_running_loss = 0.0
-    det_running_loss = 0.0
     running_mAP = 0.0
     running_f1 = 0.0
-    running_iou = 0.0
+    bbox_running_loss = 0.0
 
     progress_bar = tqdm(val_loader, desc=f'Training Epoch {epoch}')
-    for i, batch in enumerate(progress_bar):
-        inputs, mask_labels, attributes, bboxes = batch
+    with torch.no_grad():
+        for i, batch in enumerate(progress_bar):
+            inputs, mask_labels, attributes, bboxes_list = batch
 
-        _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
-        # from datasets import show_deepfashion2_image_masks_and_labels
-        # show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes, _bboxes)
+            _input, _mask_labels, _attributes, _bboxes = inputs[0].permute(1, 2, 0).cpu().numpy(), mask_labels[
+                0].cpu().numpy(), attributes[0].cpu().numpy(), bboxes[0]
+            # from datasets import show_deepfashion2_image_masks_and_labels
+            # show_deepfashion2_image_masks_and_labels(_input, _mask_labels, _attributes, _bboxes)
 
-        attributes = attributes.to(device)
-        inputs, mask_labels = inputs.to(device), mask_labels.to(device)
+            attributes = attributes.to(device)
+            inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
-        # Select a uniform scale for the entire batch
-        scale_factor = random.uniform(*scale_range)
-        inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
-                                                                                                     scale_factor)
+            # process bboxes, batch dimension being (batch_size, num_bbox_classes, 4)
+            bboxes = torch.zeros(len(inputs), len(attributes[0]), 4).to(device)
+            for b, b_list in enumerate(bboxes_list):
+                for id, box in b_list.items():
+                    bboxes[b, id, :] = torch.tensor(box).to(device)
 
-        loss, loss_mask, loss_pred, loss_det, mAP, f1, iou = model.val_batch(inputs, mask_labels, attributes, bboxes)
+            # Select a uniform scale for the entire batch
+            scale_factor = random.uniform(*scale_range)
+            inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+                                                                                                         scale_factor)
 
-        running_loss += loss
-        mask_running_loss += loss_mask
-        pred_running_loss += loss_pred
-        det_running_loss += loss_det
-        running_mAP += mAP
-        running_f1 += f1
-        running_iou += iou
+            pred_masks, pred_classes, pred_bboxes = model(inputs)
+            mask_loss = criterion_mask(pred_masks, mask_labels)
+            # pred_loss, cl_loss, rg_loss = criterion_pred(pred_classes, classes, pred_colours)  #, colour_labels)
+            pred_loss = criterion_pred(pred_classes, attributes)
+            bbox_loss = criterion_bbox(pred_bboxes, bboxes)
+            # Mask for the labels, expanded to match losses dimensions
+            bbox_loss_mask = attributes.unsqueeze(-1).expand_as(
+                bbox_loss)  # Make the mask broadcastable to match losses
+            # Apply mask by multiplying (non-relevant losses will be zeroed out)
+            masked_bbox_loss = bbox_loss * bbox_loss_mask.float()
+            # Finally, reduce the loss by summing or averaging only non-zero losses
+            final_bbox_loss = masked_bbox_loss.sum() / bbox_loss_mask.float().sum()
+            loss = mask_loss + pred_loss + final_bbox_loss
 
-        progress_bar.set_description(
-            f'VE{epoch}: ML:{loss_mask:.3f} PL:{loss_pred.item():.3f} BL:{loss_det:.3f} mAP:{mAP:.2f} f1:{f1:.2f} iou:{iou:.2f}')
+            f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='binary')
+            map_score = calculate_map(pred_bboxes, bboxes)
+
+            running_loss += loss.item()
+            mask_running_loss += mask_loss.item()
+            pred_running_loss += pred_loss.item()
+            bbox_running_loss += final_bbox_loss.item()
+            running_f1 += f1
+            running_mAP += map_score
+
+            progress_bar.set_description(
+                f'VE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item().item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
     pred_val_loss = pred_running_loss / len(val_loader)
     avrg_mAP = running_mAP / len(val_loader)
     avrg_f1 = running_f1 / len(val_loader)
-    avrg_iou = running_iou / len(val_loader)
     progress_bar.set_description(
-        f'VE{epoch}: ML:{mask_running_loss:.3f} PL:{pred_running_loss:.3f} BL:{det_running_loss:.3f} mAP:{avrg_mAP:.2f} f1:{avrg_f1:.2f} iou:{avrg_iou:.2f}')
-    return val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1, avrg_iou
+        f'VE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item().item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
+    return val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1
 
 
 def train_CCP(model, optimizer, train_loader, criterion_mask, criterion_pred, scale_range, epoch, device, mode=0):
