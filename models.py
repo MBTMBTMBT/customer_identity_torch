@@ -220,6 +220,49 @@ class SegmentPredictor(nn.Module):
         return mask, labels
 
 
+class SegmentPredictorBbox(SegmentPredictor):
+    def __init__(self, num_masks, num_labels, num_bbox_classes, in_channels=3, sigmoid=True):
+        super(SegmentPredictorBbox, self).__init__(num_masks, num_labels, in_channels, sigmoid)
+        self.num_bbox_classes = num_bbox_classes
+        self.bbox_generator = nn.Sequential(
+            nn.Linear(2048, 256),  # resnet50/101/152
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Dropout(p=0.5),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Dropout(p=0.5),
+            nn.Linear(128, num_bbox_classes * 4)
+        )
+
+    def forward(self, x):
+        x1 = self.encoder1(x)
+        x2 = self.encoder2(x1)
+        x3 = self.encoder3(x2)
+        x4 = self.encoder4(x3)
+        x5 = self.encoder5(x4)
+
+        x = self.up1(x4, x5)
+        x = self.up2(x3, x)
+        x = self.up3(x2, x)
+        x = self.up4(x1, x)
+        x = F.interpolate(x, size=(x.size(2) * 2, x.size(3) * 2), mode='bilinear', align_corners=True)
+
+        mask = self.final_conv(x)
+
+        # Predicting the labels using features from the last encoder output
+        x_cls = self.global_pool(x5)  # Use the feature map from the last encoder layer
+        x_cls = x_cls.view(x_cls.size(0), -1)
+        labels = self.classifier(x_cls)
+        bboxes = self.bbox_generator(x_cls).view(-1, self.num_bbox_classes, 4)
+
+        # no sigmoid for bboxes.
+        if self.sigmoid:
+            mask = torch.sigmoid(mask)
+            labels = torch.sigmoid(labels)
+
+        return mask, labels, bboxes
+
+
 def calc_detection_loss(class_logits, box_regression, labels, boxes):
     classification_loss = sigmoid_focal_loss(class_logits, labels, reduction="mean")
     reg_loss = F.smooth_l1_loss(box_regression, boxes, reduction="mean")
