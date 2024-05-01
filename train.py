@@ -495,7 +495,7 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
     pred_val_loss = pred_running_loss / len(val_loader)
     bbox_train_loss = bbox_running_loss / len(val_loader)
     avrg_mAP = running_mAP / len(val_loader)
-    # avrg_f1 = running_f1 / len(val_loader)
+    avrg_f1 = running_f1 / len(val_loader)
     progress_bar.set_description(
         f'VE{epoch}: ML:{mask_val_loss:.3f} PL:{pred_val_loss:.3f} BL:{bbox_train_loss:.3f} f1:{avrg_f1:.2f} mAP:{avrg_mAP:.2f}')
     return val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1
