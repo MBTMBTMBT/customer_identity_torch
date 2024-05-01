@@ -488,15 +488,16 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
             running_mAP += map_score
 
             progress_bar.set_description(
-                f'VE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
+                f'VE{epoch}: ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} BL:{bbox_running_loss / (i + 1):.3f} f1:{running_f1 / (i + 1):.2f} mAP:{running_mAP / (i + 1):.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
     pred_val_loss = pred_running_loss / len(val_loader)
+    bbox_train_loss = bbox_running_loss / len(val_loader)
     avrg_mAP = running_mAP / len(val_loader)
-    avrg_f1 = running_f1 / len(val_loader)
+    # avrg_f1 = running_f1 / len(val_loader)
     progress_bar.set_description(
-        f'VE{epoch}: ML:{mask_loss.item():.3f} PL:{pred_loss.item():.3f} BL:{final_bbox_loss.item():.3f} f1:{f1:.2f} mAP:{map_score:.2f}')
+        f'VE{epoch}: ML:{mask_val_loss:.3f} PL:{pred_val_loss:.3f} BL:{bbox_train_loss:.3f} f1:{avrg_f1:.2f} mAP:{avrg_mAP:.2f}')
     return val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1
 
 
