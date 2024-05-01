@@ -105,9 +105,9 @@ if __name__ == "__main__":
                                                                                                       scale_range,
                                                                                                       epoch, device,
                                                                                                       writer, counter, )
-        val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1 = validate(model, val_loader, criterion_mask,
-                                                                             criterion_pred,
-                                                                   epoch, device)
+        val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1 = val_DeepFashion2(model, val_loader, criterion_mask,
+                                                                                     criterion_pred, criterion_bbox,
+                                                                                     epoch, device)
 
         # write to TensorBoard
         # writer.add_scalar('Loss/Train', train_loss, epoch)

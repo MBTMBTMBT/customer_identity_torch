@@ -391,6 +391,7 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         final_bbox_loss = masked_bbox_loss.sum() / bbox_loss_mask.float().sum()
         loss = mask_loss + pred_loss + final_bbox_loss
 
+        loss.backward()
         optimizer.step()
 
         f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='micro')
@@ -429,7 +430,7 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
     return train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1
 
 
-def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterion_bbox, scale_range, epoch, device):
+def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterion_bbox, epoch, device):
     model.train()
     running_loss = 0.0
     mask_running_loss = 0.0
@@ -458,9 +459,9 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
                     bboxes[b, id, :] = torch.tensor(box).to(device)
 
             # Select a uniform scale for the entire batch
-            scale_factor = random.uniform(*scale_range)
-            inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
-                                                                                                         scale_factor)
+            # scale_factor = random.uniform(*scale_range)
+            # inputs, mask_labels = _scale_images_uniformly(inputs, scale_factor), _scale_images_uniformly(mask_labels,
+            #                                                                                              scale_factor)
 
             pred_masks, pred_classes, pred_bboxes = model(inputs)
             mask_loss = criterion_mask(pred_masks, mask_labels)
