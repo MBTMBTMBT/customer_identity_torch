@@ -2,10 +2,11 @@ if __name__ == "__main__":
     import torch.optim as optim
     from torch.utils.data import Subset, DataLoader  # random_split
     from torch.utils.tensorboard import SummaryWriter
+    # import torch
+    # torch.backends.cudnn.enabled = False
+    import warnings
 
-    import torch
-
-    torch.backends.cudnn.enabled = False
+    warnings.filterwarnings("ignore")
 
     from models import *
     from datasets import *
