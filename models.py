@@ -190,7 +190,7 @@ class SegmentPredictor(nn.Module):
             nn.Linear(256, 256),
             nn.LeakyReLU(negative_slope=0.01),
             nn.Dropout(p=0.5),
-            nn.Linear(128, num_labels)
+            nn.Linear(256, num_labels)
         )
 
     def forward(self, x):
