@@ -73,7 +73,7 @@ if __name__ == "__main__":
     early_stopping_counter = 0
 
     # check model saving dir
-    model_dir = "deepfashion2-segpredbbox"
+    model_dir = "deepfashion2-segpredbbox-big"
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 

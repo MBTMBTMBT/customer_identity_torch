@@ -151,7 +151,7 @@ class SegmentPredictor(nn.Module):
     def __init__(self, num_masks, num_labels, in_channels=3, sigmoid=True):
         super(SegmentPredictor, self).__init__()
         self.sigmoid = sigmoid
-        self.resnet = models.resnet18(pretrained=True)
+        self.resnet = models.resnet50(pretrained=True)
 
         # Adapt ResNet to handle different input channel sizes
         if in_channels != 3:
@@ -166,16 +166,16 @@ class SegmentPredictor(nn.Module):
 
         # Decoder layers
         # resnet18/34
-        self.up1 = Decoder(512, 256, 256)
-        self.up2 = Decoder(256, 128, 128)
-        self.up3 = Decoder(128, 64, 64)
-        self.up4 = Decoder(64, 64, 64)
+        # self.up1 = Decoder(512, 256, 256)
+        # self.up2 = Decoder(256, 128, 128)
+        # self.up3 = Decoder(128, 64, 64)
+        # self.up4 = Decoder(64, 64, 64)
 
         # resnet50/101/152
-        # self.up1 = Decoder(2048, 1024, 1024)
-        # self.up2 = Decoder(1024, 512, 512)
-        # self.up3 = Decoder(512, 256, 256)
-        # self.up4 = Decoder(256, 64, 64)
+        self.up1 = Decoder(2048, 1024, 1024)
+        self.up2 = Decoder(1024, 512, 512)
+        self.up3 = Decoder(512, 256, 256)
+        self.up4 = Decoder(256, 64, 64)
 
         # Segmentation head
         self.final_conv = nn.Conv2d(64, num_masks, kernel_size=1)
@@ -183,8 +183,8 @@ class SegmentPredictor(nn.Module):
         # Classification head
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.classifier = nn.Sequential(
-            nn.Linear(512, 256),  # resnet18/34
-            # nn.Linear(2048, 256),  # resnet50/101/152
+            # nn.Linear(512, 256),  # resnet18/34
+            nn.Linear(2048, 256),  # resnet50/101/152
             nn.LeakyReLU(negative_slope=0.01),
             nn.Dropout(p=0.5),
             nn.Linear(256, 256),
@@ -224,9 +224,15 @@ class SegmentPredictorBbox(SegmentPredictor):
     def __init__(self, num_masks, num_labels, num_bbox_classes, in_channels=3, sigmoid=True):
         super(SegmentPredictorBbox, self).__init__(num_masks, num_labels, in_channels, sigmoid)
         self.num_bbox_classes = num_bbox_classes
+        self.bbox_cnn_extension = nn.Sequential(
+            # nn.Conv2d(512, 4096, kernel_size=3, padding=1),  # resnet18/34
+            nn.Conv2d(2048, 4096, kernel_size=3, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Conv2d(4096, 4096, kernel_size=3, padding=1),
+            nn.LeakyReLU(negative_slope=0.01),
+        )
         self.bbox_generator = nn.Sequential(
-            nn.Linear(512, 256),  # resnet18/34
-            # nn.Linear(2048, 256),  # resnet50/101/152
+            nn.Linear(4096, 256),
             nn.LeakyReLU(negative_slope=0.01),
             nn.Linear(256, 256),
             nn.LeakyReLU(negative_slope=0.01),
@@ -252,7 +258,10 @@ class SegmentPredictorBbox(SegmentPredictor):
         x_cls = self.global_pool(x5)  # Use the feature map from the last encoder layer
         x_cls = x_cls.view(x_cls.size(0), -1)
         labels = self.classifier(x_cls)
-        bboxes = self.bbox_generator(x_cls).view(-1, self.num_bbox_classes, 4)
+        x_bbox = self.bbox_cnn_extension(x5)
+        x_bbox = self.global_pool(x_bbox)
+        x_bbox = x_bbox.view(x_bbox.size(0), -1)
+        bboxes = self.bbox_generator(x_bbox).view(-1, self.num_bbox_classes, 4)
 
         # no sigmoid for bboxes.
         if self.sigmoid:

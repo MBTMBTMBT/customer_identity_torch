@@ -293,25 +293,36 @@ def iou(boxes1, boxes2):
     return iou
 
 
-def calculate_map(pred_boxes, pred_scores, true_boxes, iou_threshold=0.5):
+def calculate_map(pred_boxes, pred_scores, true_boxes, true_labels, iou_threshold=0.5):
     """
     Calculate mean average precision for batches of predicted and true boxes.
-    pred_boxes: Tensor of shape [batch_size, num_pred_boxes, 4]
-    pred_scores: Tensor of shape [batch_size, num_pred_boxes]
-    true_boxes: Tensor of shape [batch_size, num_true_boxes, 4]
+    Only considers boxes associated with label 1.
+
+    Parameters:
+    - pred_boxes: Tensor of shape [batch_size, num_pred_boxes, 4]
+    - pred_scores: Tensor of shape [batch_size, num_pred_boxes]
+    - true_boxes: Tensor of shape [batch_size, num_true_boxes, 4]
+    - true_labels: Tensor of shape [batch_size, num_pred_boxes], should contain binary labels (0 or 1)
+    - iou_threshold: float, threshold for IoU to consider a detection as a true positive.
     """
     batch_size = pred_boxes.size(0)
     aps = []
 
     for batch_idx in range(batch_size):
+        # Filter boxes and scores based on true_labels being 1
+        relevant_indices = true_labels[batch_idx] == 1.0
+        relevant_pred_boxes = pred_boxes[batch_idx][relevant_indices]
+        relevant_pred_scores = pred_scores[batch_idx][relevant_indices]
+        relevant_true_boxes = true_boxes[batch_idx]
+
         # Sort predictions by scores
-        scores, sort_indices = torch.sort(pred_scores[batch_idx], descending=True)
-        sorted_pred_boxes = pred_boxes[batch_idx][sort_indices]
+        scores, sort_indices = torch.sort(relevant_pred_scores, descending=True)
+        sorted_pred_boxes = relevant_pred_boxes[sort_indices]
 
         # Compute IoUs between sorted pred boxes and true boxes
-        ious = iou(sorted_pred_boxes.unsqueeze(0), true_boxes[batch_idx].unsqueeze(0)).squeeze(0)
+        ious = iou(sorted_pred_boxes.unsqueeze(0), relevant_true_boxes.unsqueeze(0)).squeeze(0)
 
-        num_true_boxes = true_boxes[batch_idx].size(0)
+        num_true_boxes = relevant_true_boxes.size(0)
         num_pred_boxes = sorted_pred_boxes.size(0)
 
         if num_true_boxes == 0 or num_pred_boxes == 0:
@@ -397,7 +408,7 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         # a, b = (attributes > 0.5).cpu().int().numpy().tolist(), (pred_classes > 0.5).cpu().int().numpy().tolist()
         f1 = f1_score((attributes > 0.5).cpu().int().numpy().tolist(),
                       (pred_classes > 0.5).cpu().int().numpy().tolist(), average='samples')
-        map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
+        map_score = calculate_map(pred_bboxes, pred_classes, bboxes, attributes)
 
         running_loss += loss.item()
         mask_running_loss += mask_loss.item()
@@ -442,6 +453,7 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
     bbox_running_loss = 0.0
     f1_list_a = []
     f1_list_b = []
+    f1 = 0.0
 
     progress_bar = tqdm(val_loader, desc=f'Training Epoch {epoch}')
     with torch.no_grad():
@@ -485,8 +497,9 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
             b = (pred_classes > 0.5).cpu().int().numpy()[0]
             f1_list_a.append(a)
             f1_list_b.append(b)
-            f1 = f1_score(f1_list_a, f1_list_b, average='samples')
-            map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
+            if i % 1000 == 0 or i >= len(val_loader) - 1:
+                f1 = f1_score(f1_list_a, f1_list_b, average='samples')
+            map_score = calculate_map(pred_bboxes, pred_classes, bboxes, attributes)
 
             running_loss += loss.item()
             mask_running_loss += mask_loss.item()
