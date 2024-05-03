@@ -46,10 +46,10 @@ if __name__ == "__main__":
     # )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=0,
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=8,
                               collate_fn=collate_fn_DeepFashion2)
     # collate_fn=collate_fn_DeepFashion2)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn_DeepFashion2)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=8, collate_fn=collate_fn_DeepFashion2)
     # collate_fn=collate_fn_DeepFashion2)
 
     # choose device
