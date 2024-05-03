@@ -394,7 +394,7 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         loss.backward()
         optimizer.step()
 
-        f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='micro')
+        f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='samples')
         map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
 
         running_loss += loss.item()
@@ -477,7 +477,7 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
             final_bbox_loss = masked_bbox_loss.sum() / bbox_loss_mask.float().sum()
             loss = mask_loss + pred_loss + final_bbox_loss
 
-            f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='micro')
+            f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='samples')
             map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
 
             running_loss += loss.item()
