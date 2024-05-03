@@ -46,7 +46,7 @@ if __name__ == "__main__":
     # )
 
     # dataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=8,
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=0,
                               collate_fn=collate_fn_DeepFashion2)
     # collate_fn=collate_fn_DeepFashion2)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=8, collate_fn=collate_fn_DeepFashion2)
@@ -64,8 +64,8 @@ if __name__ == "__main__":
     # optimizer
     criterion_mask = nn.BCELoss()
     criterion_pred = nn.BCELoss()
-    criterion_bbox = nn.SmoothL1Loss(reduction='none')
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    criterion_bbox = nn.L1Loss(reduction='none')
+    optimizer = optim.Adam(model.parameters(), lr=5e-4)
 
 
     # early stopping params

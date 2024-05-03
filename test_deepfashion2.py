@@ -10,23 +10,20 @@ if __name__ == "__main__":
 
     cap = cv2.VideoCapture(0)
 
-    device = torch.device('cuda')
+    device = torch.device('cpu')
 
     num_classes = len(DeepFashion2Dataset.categories)
-    model = SegmentPredictor(num_masks=num_classes, num_labels=num_classes, )
+    model = SegmentPredictorBbox(num_masks=num_classes, num_labels=num_classes, num_bbox_classes=num_classes)
     model.to(device)
 
-    # optimizer
-    criterion_mask = nn.BCELoss()
-    criterion_pred = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = None
 
     # early stopping params
     early_stopping_patience = 5
     early_stopping_counter = 0
 
     # check model saving dir
-    model_dir = "deepfashion2-segpred"
+    model_dir = "deepfashion2-segpredbbox"
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
@@ -61,10 +58,16 @@ if __name__ == "__main__":
         frame = torch.from_numpy(frame).permute(2, 0, 1).float().unsqueeze(0).to(device) / 255
 
         with torch.no_grad():
-            pred_masks, pred_classes = model(frame)
+            pred_masks, pred_classes, pred_bboxes = model(frame)
 
-        frame, pred_masks, pred_classes = frame[0].permute(1, 2, 0).cpu().numpy(), pred_masks[0].cpu().numpy(), \
-            pred_classes[0].cpu().numpy()
+        frame, pred_masks, pred_classes, pred_bboxes = frame[0].permute(1, 2, 0).cpu().numpy(), pred_masks[
+            0].cpu().numpy(), \
+            pred_classes[0].cpu().numpy(), pred_bboxes[0].cpu().numpy()
+
+        bboxes_list = []
+        for idx, label in enumerate(pred_classes):
+            if label == 1:
+                bboxes_list.append((idx, pred_bboxes[idx].tolist()))
 
         fig, axs = show_deepfashion2_image_masks_and_labels(frame, pred_masks, pred_classes, [], fig, axs)
         plt.pause(0.1)

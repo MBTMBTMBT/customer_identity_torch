@@ -227,11 +227,9 @@ class SegmentPredictorBbox(SegmentPredictor):
         self.bbox_generator = nn.Sequential(
             nn.Linear(2048, 256),  # resnet50/101/152
             nn.LeakyReLU(negative_slope=0.01),
-            nn.Dropout(p=0.5),
-            nn.Linear(256, 128),
+            nn.Linear(256, 256),
             nn.LeakyReLU(negative_slope=0.01),
-            nn.Dropout(p=0.5),
-            nn.Linear(128, num_bbox_classes * 4)
+            nn.Linear(256, num_bbox_classes * 4)
         )
 
     def forward(self, x):
