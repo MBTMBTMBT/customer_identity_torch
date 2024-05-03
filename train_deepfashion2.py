@@ -65,7 +65,7 @@ if __name__ == "__main__":
     criterion_mask = nn.BCELoss()
     criterion_pred = nn.BCELoss()
     criterion_bbox = nn.L1Loss(reduction='none')
-    optimizer = optim.Adam(model.parameters(), lr=5e-4)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
 
     # early stopping params

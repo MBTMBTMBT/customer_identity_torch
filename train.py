@@ -388,13 +388,13 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         # Apply mask by multiplying (non-relevant losses will be zeroed out)
         masked_bbox_loss = bbox_loss * bbox_loss_mask.float()
         # Finally, reduce the loss by summing or averaging only non-zero losses
-        final_bbox_loss = masked_bbox_loss.sum() / bbox_loss_mask.float().sum()
+        final_bbox_loss = masked_bbox_loss.sum() / bbox_loss_mask.float().sum() * 4.0
         loss = mask_loss + pred_loss + final_bbox_loss
 
         loss.backward()
         optimizer.step()
 
-        a, b = (attributes > 0.5).cpu().int().numpy().tolist(), (pred_classes > 0.5).cpu().int().numpy().tolist()
+        # a, b = (attributes > 0.5).cpu().int().numpy().tolist(), (pred_classes > 0.5).cpu().int().numpy().tolist()
         f1 = f1_score((attributes > 0.5).cpu().int().numpy().tolist(),
                       (pred_classes > 0.5).cpu().int().numpy().tolist(), average='samples')
         map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
