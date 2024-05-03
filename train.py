@@ -394,7 +394,9 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         loss.backward()
         optimizer.step()
 
-        f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='samples')
+        a, b = (attributes > 0.5).cpu().int().numpy().tolist(), (pred_classes > 0.5).cpu().int().numpy().tolist()
+        f1 = f1_score((attributes > 0.5).cpu().int().numpy().tolist(),
+                      (pred_classes > 0.5).cpu().int().numpy().tolist(), average='samples')
         map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
 
         running_loss += loss.item()
@@ -438,6 +440,8 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
     running_mAP = 0.0
     running_f1 = 0.0
     bbox_running_loss = 0.0
+    f1_list_a = []
+    f1_list_b = []
 
     progress_bar = tqdm(val_loader, desc=f'Training Epoch {epoch}')
     with torch.no_grad():
@@ -477,25 +481,29 @@ def val_DeepFashion2(model, val_loader, criterion_mask, criterion_pred, criterio
             final_bbox_loss = masked_bbox_loss.sum() / bbox_loss_mask.float().sum()
             loss = mask_loss + pred_loss + final_bbox_loss
 
-            f1 = f1_score(attributes.cpu().numpy(), (pred_classes > 0.5).cpu().numpy(), average='samples')
+            a = (attributes > 0.5).cpu().int().numpy()[0]
+            b = (pred_classes > 0.5).cpu().int().numpy()[0]
+            f1_list_a.append(a)
+            f1_list_b.append(b)
+            f1 = f1_score(f1_list_a, f1_list_b, average='samples')
             map_score = calculate_map(pred_bboxes, pred_classes, bboxes)
 
             running_loss += loss.item()
             mask_running_loss += mask_loss.item()
             pred_running_loss += pred_loss.item()
             bbox_running_loss += final_bbox_loss.item()
-            running_f1 += f1
+            running_f1 = f1
             running_mAP += map_score
 
             progress_bar.set_description(
-                f'VE{epoch}: ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} BL:{bbox_running_loss / (i + 1):.3f} f1:{running_f1 / (i + 1):.2f} mAP:{running_mAP / (i + 1):.2f}')
+                f'VE{epoch}: ML:{mask_running_loss / (i + 1):.3f} PL:{pred_running_loss / (i + 1):.3f} BL:{bbox_running_loss / (i + 1):.3f} f1:{running_f1:.2f} mAP:{running_mAP / (i + 1):.2f}')
 
     val_loss = running_loss / len(val_loader)
     mask_val_loss = mask_running_loss / len(val_loader)
     pred_val_loss = pred_running_loss / len(val_loader)
     bbox_train_loss = bbox_running_loss / len(val_loader)
     avrg_mAP = running_mAP / len(val_loader)
-    avrg_f1 = running_f1 / len(val_loader)
+    avrg_f1 = running_f1
     progress_bar.set_description(
         f'VE{epoch}: ML:{mask_val_loss:.3f} PL:{pred_val_loss:.3f} BL:{bbox_train_loss:.3f} f1:{avrg_f1:.2f} mAP:{avrg_mAP:.2f}')
     return val_loss, mask_val_loss, pred_val_loss, avrg_mAP, avrg_f1
