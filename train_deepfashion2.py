@@ -15,7 +15,7 @@ if __name__ == "__main__":
     seed = None  # random.randint(0, 1024)
     # torch.manual_seed(seed)
 
-    image_size = (225, 300)
+    image_size = (226, 300)
     scale_range = (0.3, 1.2)
     # datasets
     train_dataset = DeepFashion2Dataset(
@@ -120,7 +120,7 @@ if __name__ == "__main__":
         writer.add_scalar('LossBbox/Validation', pred_val_loss, epoch)
         writer.add_scalar('MAP/Validation', avrg_mAP, epoch)
         writer.add_scalar('F1/Validation', avrg_f1, epoch)
-        val_acc = (avrg_f1 + avrg_mAP)  # / 2
+        val_acc = (avrg_f1 + avrg_mAP) / 2
 
         # train, validate, test
         # train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, avrg_iou, counter = train_DeepFashion2(model, optimizer, train_loader, scale_range, epoch, device, tb_writer=writer, counter=counter)

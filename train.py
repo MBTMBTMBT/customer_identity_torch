@@ -313,7 +313,7 @@ def calculate_map(pred_boxes, pred_scores, true_boxes, true_labels, iou_threshol
         relevant_indices = true_labels[batch_idx] == 1.0
         relevant_pred_boxes = pred_boxes[batch_idx][relevant_indices]
         relevant_pred_scores = pred_scores[batch_idx][relevant_indices]
-        relevant_true_boxes = true_boxes[batch_idx]
+        relevant_true_boxes = true_boxes[batch_idx][relevant_indices]
 
         # Sort predictions by scores
         scores, sort_indices = torch.sort(relevant_pred_scores, descending=True)
