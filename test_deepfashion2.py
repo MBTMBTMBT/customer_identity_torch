@@ -23,7 +23,7 @@ if __name__ == "__main__":
     early_stopping_counter = 0
 
     # check model saving dir
-    model_dir = "deepfashion2-segpredbbox"
+    model_dir = "deepfashion2-segpredbbox-big"
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
@@ -66,10 +66,10 @@ if __name__ == "__main__":
 
         bboxes_list = []
         for idx, label in enumerate(pred_classes):
-            if label == 1:
+            if label >= 0.3:
                 bboxes_list.append((idx, pred_bboxes[idx].tolist()))
 
-        fig, axs = show_deepfashion2_image_masks_and_labels(frame, pred_masks, pred_classes, [], fig, axs)
+        fig, axs = show_deepfashion2_image_masks_and_labels(frame, pred_masks, pred_classes, bboxes_list, fig, axs)
         plt.pause(0.1)
 
     plt.ioff()  # Disable interactive mode

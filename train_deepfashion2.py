@@ -15,8 +15,8 @@ if __name__ == "__main__":
     seed = None  # random.randint(0, 1024)
     # torch.manual_seed(seed)
 
-    image_size = (192, 256)
-    scale_range = (0.5, 1.0)
+    image_size = (225, 300)
+    scale_range = (0.3, 1.2)
     # datasets
     train_dataset = DeepFashion2Dataset(
         image_dir='../deepfashion2/train/image',
@@ -33,8 +33,8 @@ if __name__ == "__main__":
     # train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size], seed=0)  # [train_size, val_size, test_size]) [1, 1, len(full_dataset)-2])
     train_dataset = AugmentedDeepFashion2Dataset(
         dataset_source=train_dataset, output_size=image_size,
-        flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.9, 1.1),
-        noise_level=(0, 1), blur_radius=(0, 2), brightness_factor=(0.85, 1.25),
+        flip_prob=0.5, crop_ratio=(1, 1), scale_factor=(0.8, 1.1),
+        noise_level=(0, 1), blur_radius=(0, 3), brightness_factor=(0.85, 1.25),
         seed=seed,
     )
     # replace with augmented dataset
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     early_stopping_counter = 0
 
     # check model saving dir
-    model_dir = "deepfashion2-segpredbbox-big"
+    model_dir = "deepfashion2-segpredbbox-small"
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
@@ -120,7 +120,7 @@ if __name__ == "__main__":
         writer.add_scalar('LossBbox/Validation', pred_val_loss, epoch)
         writer.add_scalar('MAP/Validation', avrg_mAP, epoch)
         writer.add_scalar('F1/Validation', avrg_f1, epoch)
-        val_acc = (avrg_f1 + avrg_mAP) / 2
+        val_acc = (avrg_f1 + avrg_mAP)  # / 2
 
         # train, validate, test
         # train_loss, mask_train_loss, pred_train_loss, avrg_mAP, avrg_f1, avrg_iou, counter = train_DeepFashion2(model, optimizer, train_loader, scale_range, epoch, device, tb_writer=writer, counter=counter)
