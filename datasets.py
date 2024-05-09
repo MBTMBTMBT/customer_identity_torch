@@ -106,6 +106,15 @@ class DeepFashion2Dataset(Dataset):
         'long sleeve dress', 'vest dress', 'sling dress'
     ]
 
+    general_categories = ['top', 'down', 'outwear', 'dress', ]
+
+    general_categories_dict = {
+        'top': ['short sleeve top', 'long sleeve top', 'vest', 'sling', ],
+        'down': ['shorts', 'trousers', 'skirt', ],
+        'outwear': ['short sleeve outwear', 'long sleeve outwear', ],
+        'dress:': ['short sleeve dress', 'long sleeve dress', 'vest dress', 'sling dress', ],
+    }
+
     def __init__(self, image_dir, anno_dir, output_size=(300, 400), return_bbox=True):
         self.output_size = output_size  # input: W, H
         self.image_dir = image_dir
@@ -204,6 +213,75 @@ class DeepFashion2Dataset(Dataset):
         else:
             # Crop height to fit target ratio
             return current_size[0], int(current_size[0] / target_ratio)
+
+
+class DeepFashion2DatasetGeneral(DeepFashion2Dataset):
+    def __getitem__(self, idx):
+        # Start by using the parent class method to load basic data
+        img_name = self.image_filenames[idx]
+        img_path = os.path.join(self.image_dir, img_name)
+        image = Image.open(img_path).convert('RGB')
+        crop_width, crop_height = self.get_max_crop(image.size, self.output_size)
+
+        anno_path = os.path.join(self.anno_dir, img_name.replace('.jpg', '.json'))
+        with open(anno_path, 'r', encoding='utf-8') as file:
+            anno_data = json.load(file)
+
+        # Initialize mask arrays and bbox list for all specific and general categories
+        masks = torch.zeros(
+            (len(self.categories) + len(self.general_categories), self.output_size[1], self.output_size[0]),
+            dtype=torch.float32)
+        general_masks = torch.zeros((len(self.general_categories), self.output_size[1], self.output_size[0]),
+                                    dtype=torch.float32)
+        bboxes = []
+        general_bboxes = [[0, 0, 0, 0] for _ in
+                          range(len(self.general_categories))]  # Initialize with zero-width bboxes
+
+        # Process each item in the annotation
+        for item_key, item_value in anno_data.items():
+            if item_key.startswith('item'):
+                category_id = item_value.get('category_id', 0) - 1
+                bbox = item_value.get('bounding_box', [])
+                if 0 <= category_id < len(self.categories):
+                    # Create and process mask for current item
+                    mask = Image.new('L', image.size, 0)
+                    draw = ImageDraw.Draw(mask)
+                    for segment in item_value.get('segmentation', []):
+                        draw.polygon(segment, fill=255)
+                    mask = TF.center_crop(mask, (crop_height, crop_width))
+                    mask = TF.resize(mask, (self.output_size[1], self.output_size[0]))
+                    mask_tensor = self.transform(mask).squeeze(0)  # Convert to tensor and remove channel dim
+                    masks[category_id + len(self.general_categories)] = torch.max(
+                        masks[category_id + len(self.general_categories)], mask_tensor)
+
+                    # Update general category masks
+                    for i, gen_cat in enumerate(self.general_categories):
+                        if self.categories[category_id] in self.general_categories_dict[gen_cat]:
+                            general_masks[i] = torch.max(general_masks[i], mask_tensor)
+
+                            # Update general category bounding boxes
+                            x1, y1, x2, y2 = bbox
+                            gx1, gy1, gx2, gy2 = general_bboxes[i]
+                            general_bboxes[i] = [
+                                min(gx1, x1), min(gy1, y1),
+                                max(gx2, x2), max(gy2, y2)
+                            ]
+
+        # Combine specific and general masks
+        masks[:len(self.general_categories)] = general_masks
+
+        # Crop the image and convert to tensor
+        image = TF.center_crop(image, (crop_height, crop_width))
+        image = TF.resize(image, (self.output_size[1], self.output_size[0]))
+        image_tensor = self.transform(image)
+
+        # Update labels based on mask presence after cropping for all categories
+        labels = (torch.sum(masks.reshape(len(self.categories) + len(self.general_categories), -1), dim=1) > 0).float()
+
+        if self.return_bbox:
+            return image_tensor, masks, labels, general_bboxes
+        else:
+            return image_tensor, masks, labels
 
 
 def collate_fn_DeepFashion2(batch):
