@@ -377,7 +377,7 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         inputs, mask_labels = inputs.to(device), mask_labels.to(device)
 
         # process bboxes, batch dimension being (batch_size, num_bbox_classes, 4)
-        bboxes = torch.zeros(len(inputs), len(attributes[0]), 4).to(device)
+        bboxes = torch.zeros(len(inputs), model.num_bbox_classes, 4).to(device)
         for b, b_list in enumerate(bboxes_list):
             for id, box in b_list:
                 bboxes[b, id, :] = torch.tensor(box).to(device)
@@ -395,7 +395,9 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         pred_loss = criterion_pred(pred_classes, attributes)
         bbox_loss = criterion_bbox(pred_bboxes, bboxes)
         # Mask for the labels, expanded to match losses dimensions
-        bbox_loss_mask = attributes.unsqueeze(-1).expand_as(bbox_loss)  # Make the mask broadcastable to match losses
+        # x = attributes[:, 0:len(bbox_loss[0])].unsqueeze(-1)
+        bbox_loss_mask = attributes[:, 0:len(bbox_loss[0])].unsqueeze(-1).expand_as(
+            bbox_loss)  # Make the mask broadcastable to match losses
         # Apply mask by multiplying (non-relevant losses will be zeroed out)
         masked_bbox_loss = bbox_loss * bbox_loss_mask.float()
         # Finally, reduce the loss by summing or averaging only non-zero losses
@@ -408,7 +410,8 @@ def train_DeepFashion2(model, optimizer, train_loader, criterion_mask, criterion
         # a, b = (attributes > 0.5).cpu().int().numpy().tolist(), (pred_classes > 0.5).cpu().int().numpy().tolist()
         f1 = f1_score((attributes > 0.5).cpu().int().numpy().tolist(),
                       (pred_classes > 0.5).cpu().int().numpy().tolist(), average='samples')
-        map_score = calculate_map(pred_bboxes, pred_classes, bboxes, attributes)
+        map_score = calculate_map(pred_bboxes, pred_classes[:, 0:len(bbox_loss[0])], bboxes,
+                                  attributes[:, 0:len(bbox_loss[0])])
 
         running_loss += loss.item()
         mask_running_loss += mask_loss.item()

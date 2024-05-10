@@ -112,7 +112,7 @@ class DeepFashion2Dataset(Dataset):
         'top': ['short sleeve top', 'long sleeve top', 'vest', 'sling', ],
         'down': ['shorts', 'trousers', 'skirt', ],
         'outwear': ['short sleeve outwear', 'long sleeve outwear', ],
-        'dress:': ['short sleeve dress', 'long sleeve dress', 'vest dress', 'sling dress', ],
+        'dress': ['short sleeve dress', 'long sleeve dress', 'vest dress', 'sling dress', ],
     }
 
     def __init__(self, image_dir, anno_dir, output_size=(300, 400), return_bbox=True):
@@ -233,8 +233,7 @@ class DeepFashion2DatasetGeneral(DeepFashion2Dataset):
             dtype=torch.float32)
         general_masks = torch.zeros((len(self.general_categories), self.output_size[1], self.output_size[0]),
                                     dtype=torch.float32)
-        bboxes = []
-        general_bboxes = [[0, 0, 0, 0] for _ in
+        general_bboxes = [(i, [0, 0, 0, 0]) for i in
                           range(len(self.general_categories))]  # Initialize with zero-width bboxes
 
         # Process each item in the annotation
@@ -260,12 +259,13 @@ class DeepFashion2DatasetGeneral(DeepFashion2Dataset):
                             general_masks[i] = torch.max(general_masks[i], mask_tensor)
 
                             # Update general category bounding boxes
+                            bbox = self.convert_bbox(bbox, image.size, (crop_width, crop_height), self.output_size)
                             x1, y1, x2, y2 = bbox
-                            gx1, gy1, gx2, gy2 = general_bboxes[i]
-                            general_bboxes[i] = [
+                            _, (gx1, gy1, gx2, gy2) = general_bboxes[i]
+                            general_bboxes[i] = (i, [
                                 min(gx1, x1), min(gy1, y1),
                                 max(gx2, x2), max(gy2, y2)
-                            ]
+                            ])
 
         # Combine specific and general masks
         masks[:len(self.general_categories)] = general_masks
