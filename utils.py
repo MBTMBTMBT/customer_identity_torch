@@ -657,6 +657,23 @@ def show_deepfashion2_image_masks_and_labels(image, masks, labels, bboxes, fig=N
         'trousers', 'skirt', 'short sleeve dress',
         'long sleeve dress', 'vest dress', 'sling dress'
     ]
+    categories = [
+        'short sleeve top', 'long sleeve top', 'short sleeve outwear',
+        'long sleeve outwear', 'vest', 'sling', 'shorts',
+        'trousers', 'skirt', 'short sleeve dress',
+        'long sleeve dress', 'vest dress', 'sling dress'
+    ]
+
+    general_categories = ['top', 'down', 'outwear', 'dress', ]
+
+    general_categories_dict = {
+        'top': ['short sleeve top', 'long sleeve top', 'vest', 'sling', ],
+        'down': ['shorts', 'trousers', 'skirt', ],
+        'outwear': ['short sleeve outwear', 'long sleeve outwear', ],
+        'dress': ['short sleeve dress', 'long sleeve dress', 'vest dress', 'sling dress', ],
+    }
+
+    all_categories = general_categories + categories
 
     # Convert the image tensor to PIL Image for display
     image_pil = transforms.ToPILImage()(image)
@@ -678,7 +695,7 @@ def show_deepfashion2_image_masks_and_labels(image, masks, labels, bboxes, fig=N
     for i, mask in enumerate(masks):
         axs[i + 1].imshow(image_pil, alpha=0.5)  # Show the underlying image
         axs[i + 1].imshow(mask, cmap='gray', alpha=0.5, interpolation='none')  # Overlay the mask
-        axs[i + 1].set_title(f'{categories[i]}:\n{"%.1f" % labels[i]}')
+        axs[i + 1].set_title(f'{all_categories[i]}:\n{"%.1f" % labels[i]}')
         axs[i + 1].axis('off')
 
         # Add bounding boxes to the plot

@@ -13,7 +13,7 @@ if __name__ == "__main__":
     device = torch.device('cpu')
 
     num_classes = len(DeepFashion2Dataset.categories)
-    model = SegmentPredictorBbox(num_masks=num_classes, num_labels=num_classes, num_bbox_classes=num_classes)
+    model = SegmentPredictorBbox(num_masks=num_classes + 4, num_labels=num_classes + 4, num_bbox_classes=4)
     model.to(device)
 
     optimizer = None
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     early_stopping_counter = 0
 
     # check model saving dir
-    model_dir = "deepfashion2-segpredbbox-big"
+    model_dir = "deepfashion2-segpredbbox-general-small"
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
@@ -65,9 +65,9 @@ if __name__ == "__main__":
             pred_classes[0].cpu().numpy(), pred_bboxes[0].cpu().numpy()
 
         bboxes_list = []
-        for idx, label in enumerate(pred_classes):
+        for idx, label in enumerate(pred_classes[:4]):
             if label >= 0.3:
-                bboxes_list.append((idx, pred_bboxes[idx].tolist()))
+                bboxes_list.append((idx, pred_bboxes[idx,].tolist()))
 
         fig, axs = show_deepfashion2_image_masks_and_labels(frame, pred_masks, pred_classes, bboxes_list, fig, axs)
         plt.pause(0.1)
